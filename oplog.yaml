@@ -94,5 +94,21 @@ operations:
     req_type: Bug
     status: Draft
     priority: Medium
-clock: 6
+- id: 01a1e0d0-052e-7682-8794-1bf338453e1d
+  target_id: 01a1e0d0-04b9-7773-895c-b14f9613aff3
+  author: aida
+  node_id: ''
+  lamport: 7
+  timestamp: 2026-11-15T20:04:51.630990187Z
+  kind: !Create
+    title: default_author() in aida-core::provenance ignores AIDA_USER on comments, edits, and write events (S2/S4)
+    description: |-
+      In aida-core/src/provenance.rs:399, default_author() checks AIDA_AUTHOR -> USER -> USERNAME, skipping AIDA_USER. Comments and history entries stamp the OS USER instead of AIDA_USER.
+
+      ## Acceptance
+      - default_author() resolves AIDA_AUTHOR -> AIDA_USER -> USER -> USERNAME -> Unknown.
+    req_type: Bug
+    status: Draft
+    priority: Medium
+clock: 7
 node_id: ''

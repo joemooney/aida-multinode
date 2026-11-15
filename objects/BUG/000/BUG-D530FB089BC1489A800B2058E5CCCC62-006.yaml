@@ -1,0 +1,22 @@
+id: 01a1e0d0-04b9-7773-895c-b14f9613aff3
+spec_id: BUG-d530fb089bc1489a800b2058e5cccc62-006
+title: default_author() in aida-core::provenance ignores AIDA_USER on comments, edits, and write events (S2/S4)
+description: |-
+  In aida-core/src/provenance.rs:399, default_author() checks AIDA_AUTHOR -> USER -> USERNAME, skipping AIDA_USER. Comments and history entries stamp the OS USER instead of AIDA_USER.
+
+  ## Acceptance
+  - default_author() resolves AIDA_AUTHOR -> AIDA_USER -> USER -> USERNAME -> Unknown.
+status: Draft
+priority: Medium
+owner: ''
+feature: Uncategorized
+created_at: 2026-11-15T20:04:51.513308273Z
+modified_at: 2026-11-15T20:04:51.513308273Z
+req_type: Bug
+filed_at:
+  code_sha: 23cb96c1828e30f7c47d35f15da5cbc94acfa92e
+  branch: main
+  dirty: false
+  aida_version: 0.16.0
+  aida_build_sha: 8ea91f58a48
+  vendor: antigravity
