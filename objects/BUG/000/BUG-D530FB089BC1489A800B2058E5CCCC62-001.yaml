@@ -1,0 +1,23 @@
+id: 01a1e0cf-f4a2-7450-8298-3c4e1b2144b1
+spec_id: BUG-d530fb089bc1489a800b2058e5cccc62-001
+title: GIT_EDITOR=false in caller environment breaks git rebase --continue during store auto-merge (S3)
+description: |-
+  In aida-core/src/git_ops.rs (lines 2254 and 2322), rebase_auto_merge_onto invokes git -c core.editor=true rebase --continue without overriding GIT_EDITOR in the subprocess environment. Because GIT_EDITOR takes precedence over core.editor in Git, agent harnesses that export GIT_EDITOR=false cause git rebase --continue to fail and abort the store rebase.
+
+  ## Acceptance
+  - rebase_auto_merge_onto passes GIT_EDITOR=true in the child environment.
+  - Store auto-merge succeeds when caller environment has GIT_EDITOR=false.
+status: Draft
+priority: High
+owner: ''
+feature: Uncategorized
+created_at: 2026-11-15T20:04:47.394635874Z
+modified_at: 2026-11-15T20:04:47.394635874Z
+req_type: Bug
+filed_at:
+  code_sha: 23cb96c1828e30f7c47d35f15da5cbc94acfa92e
+  branch: main
+  dirty: false
+  aida_version: 0.16.0
+  aida_build_sha: 8ea91f58a48
+  vendor: antigravity

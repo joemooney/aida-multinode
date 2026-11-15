@@ -11,5 +11,22 @@ operations:
     req_type: Epic
     status: Draft
     priority: Medium
-clock: 1
+- id: 01a1e0cf-f524-7ae1-9fbd-7b3545ac5a02
+  target_id: 01a1e0cf-f4a2-7450-8298-3c4e1b2144b1
+  author: aida
+  node_id: ''
+  lamport: 2
+  timestamp: 2026-11-15T20:04:47.524535839Z
+  kind: !Create
+    title: GIT_EDITOR=false in caller environment breaks git rebase --continue during store auto-merge (S3)
+    description: |-
+      In aida-core/src/git_ops.rs (lines 2254 and 2322), rebase_auto_merge_onto invokes git -c core.editor=true rebase --continue without overriding GIT_EDITOR in the subprocess environment. Because GIT_EDITOR takes precedence over core.editor in Git, agent harnesses that export GIT_EDITOR=false cause git rebase --continue to fail and abort the store rebase.
+
+      ## Acceptance
+      - rebase_auto_merge_onto passes GIT_EDITOR=true in the child environment.
+      - Store auto-merge succeeds when caller environment has GIT_EDITOR=false.
+    req_type: Bug
+    status: Draft
+    priority: High
+clock: 2
 node_id: ''
