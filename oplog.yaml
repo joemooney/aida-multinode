@@ -110,5 +110,24 @@ operations:
     req_type: Bug
     status: Draft
     priority: Medium
-clock: 7
+- id: 01a1e0d0-080b-7542-918f-925f61c6c9a1
+  target_id: 01a1e0d0-079d-7072-a850-71df5ec866ee
+  author: aida
+  node_id: ''
+  lamport: 8
+  timestamp: 2026-11-15T20:04:52.363556588Z
+  kind: !Create
+    title: Mailbox recipient discovery on work-node clones and aida init --with-mcp flag gating (S7 & Setup)
+    description: |-
+      1. Work-node clones created via aida node acquire do not populate registry/nodes.toml, causing aida mailbox send --to <user> to refuse with unknown recipient unless aida node team set-role is run interactively.
+      2. aida-cli-lib/src/init_cmd.rs:1944,1976 runs codex mcp add even when --with-mcp was not passed.
+      3. Update operator-setup.md, multi-node.md, and node acquire help text.
+
+      ## Acceptance
+      - Mailbox refusal hints at team role registration or discovers work-node users.
+      - aida init gates Codex/Antigravity MCP registration on --with-mcp.
+    req_type: Bug
+    status: Draft
+    priority: Low
+clock: 8
 node_id: ''
