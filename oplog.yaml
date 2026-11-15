@@ -78,5 +78,21 @@ operations:
     req_type: Bug
     status: Draft
     priority: Medium
-clock: 5
+- id: 01a1e0d0-0215-7911-850b-42b37aba55fe
+  target_id: 01a1e0d0-01a2-7190-9e65-719d486dfcd8
+  author: aida
+  node_id: ''
+  lamport: 6
+  timestamp: 2026-11-15T20:04:50.837189946Z
+  kind: !Create
+    title: aida db sync leaves .aida/cache-db/cache.db stale after moving .aida-store HEAD (S5/S6)
+    description: |-
+      In aida-cli-lib/src/db_cmd.rs:680-783, DbCommand::Sync operates on raw GitBackend and never rebuilds CachedGitBackend (.aida/cache-db/cache.db) after --pull or --push rebases move .aida-store HEAD. Immediately subsequent aida list --format toon calls return stale data and aida cache status reports stale.
+
+      ## Acceptance
+      - aida db sync refreshes CachedGitBackend when .aida-store HEAD advances.
+    req_type: Bug
+    status: Draft
+    priority: Medium
+clock: 6
 node_id: ''
