@@ -1,0 +1,23 @@
+id: 01a1e0f6-d2f1-79c0-949b-7de34d493b1a
+spec_id: BUG-d530fb089bc1489a800b2058e5cccc62-008
+title: aida remote mirror probes with git ls-remote instead of SSH push-to-create and masks expired glab token errors (S12)
+description: |-
+  In aida-cli-lib/src/gitlab_project_create.rs:426 (ensure_gitlab_project_exists), aida remote mirror --url probes a new GitLab remote with git ls-remote --heads before any git push. Because git ls-remote never triggers GitLab's native SSH push-to-create, it always fails with 'The project you were looking for could not be found' on a not-yet-created repo and forces API creation via glab. Furthermore, when the glab OAuth/PAT token is expired (HTTP 401 invalid_token), parse_namespace_id (line 223) fails with 'could not read the id of GitLab namespace' and aborts aida remote mirror before .aida-store remote gitlab, [store.sync] mirror_remotes, or the pre-push hook are configured.
+
+  ## Acceptance
+  - aida remote mirror attempts SSH push-to-create (or wires the mirror config and hooks before probing) so SSH push-to-create works without glab when GitLab supports it.
+  - glab API errors surface the actual error_description (e.g. expired token) instead of a generic namespace id parse error.
+status: Draft
+priority: High
+owner: ''
+feature: Uncategorized
+created_at: 2026-11-15T20:47:14.673996946Z
+modified_at: 2026-11-15T20:47:14.673996946Z
+req_type: Bug
+filed_at:
+  code_sha: 6c4b133dd254149d39122de5db9754004dbe1b20
+  branch: main
+  dirty: false
+  aida_version: 0.16.0
+  aida_build_sha: da63062280e
+  vendor: antigravity
