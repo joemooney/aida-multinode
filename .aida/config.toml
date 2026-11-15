@@ -10,6 +10,7 @@ branch = "aida-store"
 # session-end, per-write, periodic. `periodic` is reserved until
 # aida-worker (EPIC-30) ships.
 auto_push = "manual"
+mirror_remotes = ["gitlab"]
 
 # trace:EPIC-1-052 Phase 2 | ai:claude
 # How `aida add` chooses between agreed-id blocks and node-aware ids:
