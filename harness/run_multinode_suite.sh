@@ -297,6 +297,123 @@ else
   record_result "S7 (Mailbox A -> B)" "WARN" "$((t1 - t0))" "BUG-MN-007: --to node-b refused without team role; --broadcast worked"
 fi
 
+# --- S8: Multi-hub GitLab mirror setup + store fan-out (STORY-MN-003) ---
+t0=$(now_ms)
+git init --bare -b main "$T/gitlab.git" >/dev/null 2>&1
+(
+  unset GIT_EDITOR
+  cd "$T/node-a"
+  HOME="$T/home-a" AIDA_USER=node-a "$AIDA_BIN" remote mirror gitlab --url "$T/gitlab.git" < /dev/null >/dev/null 2>&1
+  HOME="$T/home-a" git add .aida/config.toml
+  HOME="$T/home-a" git commit -m "chore(remote): list gitlab as a store mirror" >/dev/null 2>&1 || true
+  HOME="$T/home-a" git push origin main >/dev/null 2>&1
+  HOME="$T/home-a" git push -u gitlab main >/dev/null 2>&1
+  HOME="$T/home-a" git -C .aida-store remote add gitlab "$T/gitlab.git" 2>/dev/null || HOME="$T/home-a" git -C .aida-store remote set-url gitlab "$T/gitlab.git"
+  HOME="$T/home-a" AIDA_USER=node-a "$AIDA_BIN" add --type task --title "S8 Fanout Task" --description "Should fan out to origin and gitlab" < /dev/null >/dev/null 2>&1
+  HOME="$T/home-a" AIDA_USER=node-a "$AIDA_BIN" db sync --push < /dev/null >/dev/null 2>&1
+)
+t1=$(now_ms)
+ORIGIN_STORE_SHA=$(git -C "$T/hub.git" rev-parse refs/heads/aida-store)
+GITLAB_STORE_SHA=$(git -C "$T/gitlab.git" rev-parse refs/heads/aida-store 2>/dev/null || echo "absent")
+if [[ "$ORIGIN_STORE_SHA" == "$GITLAB_STORE_SHA" ]]; then
+  record_result "S8 (GitLab mirror fan-out)" "PASS" "$((t1 - t0))" "origin & gitlab store tips match (${ORIGIN_STORE_SHA:0:10})"
+else
+  record_result "S8 (GitLab mirror fan-out)" "FAIL" "$((t1 - t0))" "origin ($ORIGIN_STORE_SHA) != gitlab ($GITLAB_STORE_SHA)"
+fi
+
+# --- S9: Multi-hub drift detection (remote status) + mirror-sync catch-up ---
+t0=$(now_ms)
+(
+  unset GIT_EDITOR
+  cd "$T/node-b"
+  HOME="$T/home-b" AIDA_USER=node-b "$AIDA_BIN" db sync --pull < /dev/null >/dev/null 2>&1
+  HOME="$T/home-b" AIDA_USER=node-b "$AIDA_BIN" add --type task --title "S9 Origin-Only Task" --description "Pushed from B to origin only" < /dev/null >/dev/null 2>&1
+  HOME="$T/home-b" AIDA_USER=node-b "$AIDA_BIN" db sync --push < /dev/null >/dev/null 2>&1
+)
+# Node A checks remote status (should exit non-zero because origin is ahead of gitlab)
+if (unset GIT_EDITOR && cd "$T/node-a" && HOME="$T/home-a" AIDA_USER=node-a "$AIDA_BIN" remote status < /dev/null >/dev/null 2>&1); then
+  S9_DETECTED_DRIFT=0
+else
+  S9_DETECTED_DRIFT=1
+fi
+# Node A runs remote mirror-sync to bring gitlab level with origin
+(
+  unset GIT_EDITOR
+  cd "$T/node-a"
+  HOME="$T/home-a" AIDA_USER=node-a "$AIDA_BIN" db sync --pull < /dev/null >/dev/null 2>&1
+  HOME="$T/home-a" AIDA_USER=node-a "$AIDA_BIN" remote mirror-sync < /dev/null >/dev/null 2>&1
+)
+if (unset GIT_EDITOR && cd "$T/node-a" && HOME="$T/home-a" AIDA_USER=node-a "$AIDA_BIN" remote status < /dev/null >/dev/null 2>&1); then
+  S9_SYNCED_OK=1
+else
+  S9_SYNCED_OK=0
+fi
+t1=$(now_ms)
+if [[ "$S9_DETECTED_DRIFT" -eq 1 && "$S9_SYNCED_OK" -eq 1 ]]; then
+  record_result "S9 (Drift + mirror-sync)" "PASS" "$((t1 - t0))" "remote status caught drift; mirror-sync leveled gitlab"
+else
+  record_result "S9 (Drift + mirror-sync)" "FAIL" "$((t1 - t0))" "detected_drift=$S9_DETECTED_DRIFT synced_ok=$S9_SYNCED_OK"
+fi
+
+# --- S10 & S11: Restricted push-hubs gitlab on Node C + remote reconcile --execute ---
+t0=$(now_ms)
+mkdir -p "$T/home-c"
+cat > "$T/home-c/.gitconfig" <<EOF
+[user]
+	name = Node C
+	email = c@test.invalid
+[init]
+	defaultBranch = main
+EOF
+HOME="$T/home-c" git clone "$T/gitlab.git" "$T/node-c" >/dev/null 2>&1
+(
+  unset GIT_EDITOR
+  cd "$T/node-c"
+  # Wire both origin (hub.git) and gitlab (gitlab.git) on node-c, but restrict push-hubs to gitlab!
+  HOME="$T/home-c" git remote set-url origin "$T/hub.git"
+  HOME="$T/home-c" git remote add gitlab "$T/gitlab.git"
+  HOME="$T/home-c" AIDA_USER=node-c "$AIDA_BIN" db status < /dev/null >/dev/null 2>&1 || true
+  HOME="$T/home-c" git -C .aida-store remote set-url origin "$T/hub.git"
+  HOME="$T/home-c" git -C .aida-store remote add gitlab "$T/gitlab.git" 2>/dev/null || true
+  HOME="$T/home-c" AIDA_USER=node-c "$AIDA_BIN" node acquire < /dev/null >/dev/null 2>&1
+  HOME="$T/home-c" AIDA_USER=node-c "$AIDA_BIN" remote push-hubs gitlab < /dev/null >/dev/null 2>&1
+  # Node C adds a spec -> should publish ONLY to gitlab, leaving origin untouched!
+  HOME="$T/home-c" AIDA_USER=node-c "$AIDA_BIN" add --type task --title "S10 GitLab-Only Task from C" --description "Pushed to gitlab only via push-hubs" < /dev/null >/dev/null 2>&1
+  HOME="$T/home-c" AIDA_USER=node-c "$AIDA_BIN" db sync --push < /dev/null >/dev/null 2>&1
+)
+# Meanwhile Node B adds a spec to origin only -> now origin and gitlab have diverged!
+(
+  unset GIT_EDITOR
+  cd "$T/node-b"
+  HOME="$T/home-b" AIDA_USER=node-b "$AIDA_BIN" add --type task --title "S10 Origin-Only Task from B" --description "Pushed to origin only" < /dev/null >/dev/null 2>&1
+  HOME="$T/home-b" AIDA_USER=node-b "$AIDA_BIN" db sync --push < /dev/null >/dev/null 2>&1
+)
+ORIGIN_PRE_REC=$(git -C "$T/hub.git" rev-parse refs/heads/aida-store)
+GITLAB_PRE_REC=$(git -C "$T/gitlab.git" rev-parse refs/heads/aida-store)
+t1=$(now_ms)
+if [[ "$ORIGIN_PRE_REC" != "$GITLAB_PRE_REC" ]]; then
+  record_result "S10 (push-hubs gitlab on C)" "PASS" "$((t1 - t0))" "Node C pushed only to gitlab; hubs diverged as expected"
+else
+  record_result "S10 (push-hubs gitlab on C)" "FAIL" "$((t1 - t0))" "Expected origin and gitlab to diverge before reconcile"
+fi
+
+t0=$(now_ms)
+# Dry-run reconcile should exit 2 when hubs disagree
+set +e
+(unset GIT_EDITOR && cd "$T/node-a" && HOME="$T/home-a" AIDA_USER=node-a "$AIDA_BIN" remote reconcile < /dev/null >/dev/null 2>&1)
+REC_DRY_RC=$?
+(unset GIT_EDITOR && cd "$T/node-a" && HOME="$T/home-a" AIDA_USER=node-a "$AIDA_BIN" remote reconcile --execute < /dev/null >/dev/null 2>&1)
+REC_EXEC_RC=$?
+set -e
+ORIGIN_POST_REC=$(git -C "$T/hub.git" rev-parse refs/heads/aida-store)
+GITLAB_POST_REC=$(git -C "$T/gitlab.git" rev-parse refs/heads/aida-store)
+t1=$(now_ms)
+if [[ "$REC_DRY_RC" -eq 2 && "$REC_EXEC_RC" -eq 0 && "$ORIGIN_POST_REC" == "$GITLAB_POST_REC" ]]; then
+  record_result "S11 (remote reconcile)" "PASS" "$((t1 - t0))" "Diverged origin & gitlab union-merged to ${ORIGIN_POST_REC:0:10}"
+else
+  record_result "S11 (remote reconcile)" "FAIL" "$((t1 - t0))" "dry_rc=$REC_DRY_RC exec_rc=$REC_EXEC_RC origin=$ORIGIN_POST_REC gitlab=$GITLAB_POST_REC"
+fi
+
 echo "========================================================================"
 echo "Summary: $FAILURES failure(s), $WARNINGS warning(s)"
 echo "========================================================================"

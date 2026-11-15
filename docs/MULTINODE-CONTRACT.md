@@ -79,3 +79,23 @@ Whenever `.aida-store` `HEAD` advances during `aida pull`, `aida db sync --pull`
 ## 7. Multi-Node Mailbox Addressing (S7, `BUG-MN-007`)
 
 - `aida mailbox send --to <user>` must either resolve `<user>` from known store activity / work-node bindings or, if refusing an unknown handle, provide the exact command to register the user in the store (`aida node team set-role --role <role> <user>`) alongside `--broadcast`.
+
+
+---
+
+## 8. Multi-Hub Mirroring, Drift Detection, Reconcile & Restricted Push-Hubs (S8–S12, `STORY-MN-003`, `BUG-MN-008`)
+
+1. **GitLab Mirror Registration (`aida remote mirror gitlab --url <url>`, S8 & `BUG-MN-008`):**
+   - Registers `gitlab` in `[store.sync] mirror_remotes` (`.aida/config.toml`) and installs the `pre-push` code fan-out hook.
+   - When the target GitLab project does not exist yet on an SSH remote, AIDA must allow GitLab's native SSH push-to-create (`git push -u gitlab main`) or wire the mirror config before probing, rather than failing early on `git ls-remote` (`BUG-MN-008`).
+   - When falling back to `glab api` project creation, any API error payload (`error_description` / `message`, such as an expired OAuth/PAT token) must be surfaced verbatim instead of being masked as `"could not read the id of GitLab namespace"` (`BUG-MN-008`).
+2. **Store Fan-Out (`[store.sync] mirror_remotes`, S8):**
+   - `aida db sync --push` and `aida push` fan out `aida-store` to every configured mirror remote (`gitlab`) after `origin` accepts the push.
+3. **Drift Detection & Origin-Following Catch-Up (`aida remote status` & `aida remote mirror-sync`, S9):**
+   - When a clone without the mirror remote pushes to `origin`, `aida remote status` detects that `gitlab/aida-store` is behind `origin/aida-store` and exits non-zero.
+   - `aida remote mirror-sync` (and `aida pull`) fast-forwards `gitlab` to `origin`'s tips of `main` and `aida-store` by SHA.
+4. **Restricted Push-Hubs (`aida remote push-hubs gitlab`, S10):**
+   - A work clone configured with `aida remote push-hubs gitlab` (in machine-local `~/.aida/store-local.toml`) routes all store writes (`aida add`, `aida db sync --push`) exclusively to `gitlab` and never pushes to `origin`.
+5. **Diverged Multi-Hub Reconciliation (`aida remote reconcile --execute`, S11):**
+   - When `origin/aida-store` and `gitlab/aida-store` diverge, `aida remote reconcile` (dry-run) exits `2` with the reconciliation plan.
+   - `aida remote reconcile --execute` fetches all hubs, creates a structural CRDT union-merge commit in `.aida-store` with both tips as parents (preserving specs, history, comments, and oplog from both hubs), and fast-forward pushes the union commit to every hub.

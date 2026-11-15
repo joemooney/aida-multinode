@@ -53,3 +53,9 @@ When porting the fixes from `crates/aida-store-sync` into `/home/joe/ai/aida`:
    - Add `CachedGitBackend::rebuild_cache_recovering()` to `DbCommand::Sync` in `aida-cli-lib/src/db_cmd.rs:765` whenever `head_sha(store_path)` changes.
 6. **`BUG-MN-006` (`AIDA_USER` ignored by `default_author()`):**
    - Port `provenance::resolve_default_author` into `aida-core/src/provenance.rs:399`.
+
+7. **`BUG-MN-008` (`aida remote mirror` SSH push-to-create vs `ls-remote` probe & expired `glab` token error masking):**
+   - Port `parse_gitlab_namespace_id_or_error` into `aida-cli-lib/src/gitlab_project_create.rs:120` (`parse_namespace_id`) so expired `glab` tokens (`HTTP 401 invalid_token`) report `"Token is expired..."` instead of `"could not read the id of GitLab namespace"`.
+   - In `aida-cli-lib/src/remote_create.rs` (`handle_remote_mirror`) and `gitlab_project_create.rs:426` (`ensure_gitlab_project_exists`), wire `.aida-store` remote, `[store.sync] mirror_remotes`, and the `pre-push` hook even when the `ls-remote` probe fails, or attempt SSH push-to-create before invoking `glab api`.
+8. **`STORY-MN-003` (Multi-hub structural union-merge `reconcile_diverged_hubs`):**
+   - `crates/aida-store-sync/src/lib.rs` includes `reconcile_diverged_hubs` and an end-to-end multi-hub test (`story_mn_003_multi_hub_reconcile_merges_diverged_origin_and_gitlab`) verifying structural union-merging across diverged `origin` and `gitlab` bare hubs.

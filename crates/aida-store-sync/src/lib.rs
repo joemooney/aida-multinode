@@ -708,7 +708,169 @@ pub fn rebase_auto_merge_onto(
 }
 
 // ============================================================================
-// 5. Unit & Multi-Clone Integration Tests (BUG-MN-001 through BUG-MN-006)
+// 5. Multi-Hub GitLab Mirror, Reconcile & Push-to-Create (BUG-MN-008, STORY-MN-003)
+// ============================================================================
+
+/// Parses a GitLab `/api/v4/namespaces/<ns>` JSON body (`BUG-MN-008`).
+///
+/// In `aida-cli-lib/src/gitlab_project_create.rs:120` (`parse_namespace_id`),
+/// an HTTP 401/403 JSON response like:
+/// `{"error":"invalid_token","error_description":"Token is expired..."}`
+/// returned `None`, causing `create_gitlab_project` to bail with the misleading
+/// error `"could not read the id of GitLab namespace 'ai' on gitlab.joemooney.com"`.
+///
+/// This function surfaces the actual API `error_description` / `message` when
+/// present so operators immediately know their `glab` token is expired.
+// trace:BUG-MN-008 | ai:antigravity
+pub fn parse_gitlab_namespace_id_or_error(
+    body: &str,
+    host: &str,
+    namespace: &str,
+) -> Result<u64, String> {
+    // Check for explicit error_description or message fields first
+    if let Some(desc) = extract_json_string_field(body, "error_description")
+        .or_else(|| extract_json_string_field(body, "message"))
+        .or_else(|| extract_json_string_field(body, "error"))
+    {
+        return Err(format!(
+            "GitLab API error on {host} for namespace `{namespace}`: {desc}"
+        ));
+    }
+
+    if let Some(id) = extract_json_u64_field(body, "id") {
+        return Ok(id);
+    }
+
+    Err(format!(
+        "could not read the id of GitLab namespace `{namespace}` on {host}"
+    ))
+}
+
+fn extract_json_string_field(body: &str, key: &str) -> Option<String> {
+    let pattern = format!("\"{key}\"");
+    let idx = body.find(&pattern)?;
+    let rest = &body[idx + pattern.len()..];
+    let colon = rest.find(':')?;
+    let after_colon = rest[colon + 1..].trim_start();
+    if !after_colon.starts_with('"') {
+        return None;
+    }
+    let content = &after_colon[1..];
+    let end_quote = content.find('"')?;
+    Some(content[..end_quote].to_string())
+}
+
+fn extract_json_u64_field(body: &str, key: &str) -> Option<u64> {
+    let pattern = format!("\"{key}\"");
+    let idx = body.find(&pattern)?;
+    let rest = &body[idx + pattern.len()..];
+    let colon = rest.find(':')?;
+    let after_colon = rest[colon + 1..].trim_start();
+    let digits: String = after_colon
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    digits.parse::<u64>().ok()
+}
+
+/// Reconciles diverged `aida-store` tips across multiple hubs (`origin`, `gitlab`)
+/// by creating a structural union-merge commit in `repo` with all hub tips as parents
+/// and fast-forward pushing the union to every hub (`STORY-MN-003`).
+// trace:STORY-MN-003 | ai:antigravity
+pub fn reconcile_diverged_hubs(repo: &Path, hubs: &[&str], branch: &str) -> Result<String, String> {
+    if hubs.is_empty() {
+        return Err("no hubs provided".to_string());
+    }
+    for hub in hubs {
+        let fetch = run_git_hermetic(repo, &["fetch", hub, branch])?;
+        if !fetch.status.success() {
+            return Err(format!(
+                "failed to fetch {hub}/{branch}: {}",
+                String::from_utf8_lossy(&fetch.stderr)
+            ));
+        }
+    }
+
+    // Checkout local branch tracking the first hub
+    let first_ref = format!("{}/{branch}", hubs[0]);
+    run_git_hermetic(repo, &["checkout", "-B", branch, &first_ref])?;
+
+    // Merge each additional hub structurally
+    for hub in &hubs[1..] {
+        let remote_ref = format!("{hub}/{branch}");
+        let merge_out = run_git_hermetic(repo, &["merge", "--no-edit", &remote_ref])?;
+        if !merge_out.status.success() {
+            // Resolve conflicts structurally on oplog.yaml and objects/*.yaml
+            let unmerged_out = run_git_hermetic(repo, &["diff", "--name-only", "--diff-filter=U"])?;
+            for path in String::from_utf8_lossy(&unmerged_out.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                if path == "oplog.yaml" {
+                    let ours = run_git_hermetic(repo, &["show", ":2:oplog.yaml"])?;
+                    let theirs = run_git_hermetic(repo, &["show", ":3:oplog.yaml"])?;
+                    let mut lines: BTreeSet<String> = BTreeSet::new();
+                    for line in String::from_utf8_lossy(&ours.stdout)
+                        .lines()
+                        .chain(String::from_utf8_lossy(&theirs.stdout).lines())
+                    {
+                        if !line.trim().is_empty() {
+                            lines.insert(line.to_string());
+                        }
+                    }
+                    let merged_oplog = lines.iter().cloned().collect::<Vec<_>>().join("\n") + "\n";
+                    std::fs::write(repo.join("oplog.yaml"), merged_oplog)
+                        .map_err(|e| e.to_string())?;
+                    run_git_hermetic(repo, &["add", "--", "oplog.yaml"])?;
+                } else if path.starts_with("objects/") && path.ends_with(".yaml") {
+                    let base_raw = run_git_hermetic(repo, &["show", &format!(":1:{path}")])?;
+                    let ours_raw = run_git_hermetic(repo, &["show", &format!(":2:{path}")])?;
+                    let theirs_raw = run_git_hermetic(repo, &["show", &format!(":3:{path}")])?;
+                    let base = deserialize_spec(&String::from_utf8_lossy(&base_raw.stdout))?;
+                    let ours = deserialize_spec(&String::from_utf8_lossy(&ours_raw.stdout))?;
+                    let theirs = deserialize_spec(&String::from_utf8_lossy(&theirs_raw.stdout))?;
+                    let outcome = merge_spec_upstream_with_report(&base, &ours, &theirs);
+                    std::fs::write(repo.join(path), serialize_spec(&outcome.merged))
+                        .map_err(|e| e.to_string())?;
+                    run_git_hermetic(repo, &["add", "--", path])?;
+                } else {
+                    let _ = run_git_hermetic(repo, &["merge", "--abort"]);
+                    return Err(format!("unresolvable multi-hub conflict on {path}"));
+                }
+            }
+            let commit = run_git_hermetic(repo, &["commit", "--no-edit"])?;
+            if !commit.status.success() {
+                return Err(format!(
+                    "failed to commit multi-hub union merge: {}",
+                    String::from_utf8_lossy(&commit.stderr)
+                ));
+            }
+        }
+    }
+
+    let head_out = run_git_hermetic(repo, &["rev-parse", "HEAD"])?;
+    let union_sha = String::from_utf8_lossy(&head_out.stdout).trim().to_string();
+
+    // Push union commit to every hub (each is a fast-forward by construction)
+    for hub in hubs {
+        let push = run_git_hermetic(
+            repo,
+            &["push", hub, &format!("{union_sha}:refs/heads/{branch}")],
+        )?;
+        if !push.status.success() {
+            return Err(format!(
+                "failed to push reconciled union to {hub}: {}",
+                String::from_utf8_lossy(&push.stderr)
+            ));
+        }
+    }
+
+    Ok(union_sha)
+}
+
+// ============================================================================
+// 6. Unit & Multi-Clone Integration Tests (BUG-MN-001 through BUG-MN-008, STORY-MN-003)
 // ============================================================================
 
 #[cfg(test)]
@@ -1011,6 +1173,215 @@ mod tests {
         assert_eq!(outcome.overridden_scalars[0].0, "FR-001");
         assert_eq!(outcome.overridden_scalars[0].1.len(), 1);
         assert_eq!(outcome.overridden_scalars[0].1[0].field_name, "title");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // trace:BUG-MN-008 | ai:antigravity
+    #[test]
+    fn bug_mn_008_gitlab_namespace_parser_surfaces_expired_token_error() {
+        let expired_body = r#"{
+  "error": "invalid_token",
+  "error_description": "Token is expired. You can either do re-authorization or token refresh."
+}"#;
+        let err = parse_gitlab_namespace_id_or_error(expired_body, "gitlab.joemooney.com", "ai")
+            .unwrap_err();
+        assert!(
+            err.contains("Token is expired"),
+            "Expected expired token message to be surfaced, got: {err}"
+        );
+
+        let valid_body = r#"{"id": 42, "name": "ai", "path": "ai"}"#;
+        let id =
+            parse_gitlab_namespace_id_or_error(valid_body, "gitlab.joemooney.com", "ai").unwrap();
+        assert_eq!(id, 42);
+    }
+
+    // trace:STORY-MN-003 | ai:antigravity
+    #[test]
+    fn story_mn_003_multi_hub_reconcile_merges_diverged_origin_and_gitlab() {
+        let tmp = std::env::temp_dir().join(format!(
+            "aida-multihub-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let origin_hub = tmp.join("origin.git");
+        let gitlab_hub = tmp.join("gitlab.git");
+        let bridge_clone = tmp.join("bridge");
+        let gitlab_only_clone = tmp.join("work-clone");
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        run_git_hermetic(
+            &tmp,
+            &[
+                "init",
+                "--bare",
+                "-b",
+                "aida-store",
+                origin_hub.to_str().unwrap(),
+            ],
+        )
+        .unwrap();
+        run_git_hermetic(
+            &tmp,
+            &[
+                "init",
+                "--bare",
+                "-b",
+                "aida-store",
+                gitlab_hub.to_str().unwrap(),
+            ],
+        )
+        .unwrap();
+
+        // Seed bridge clone and push initial store to both origin and gitlab
+        run_git_hermetic(
+            &tmp,
+            &[
+                "clone",
+                origin_hub.to_str().unwrap(),
+                bridge_clone.to_str().unwrap(),
+            ],
+        )
+        .unwrap();
+        run_git_hermetic(&bridge_clone, &["checkout", "-b", "aida-store"]).unwrap();
+        run_git_hermetic(&bridge_clone, &["config", "user.name", "Bridge"]).unwrap();
+        run_git_hermetic(
+            &bridge_clone,
+            &["config", "user.email", "bridge@test.invalid"],
+        )
+        .unwrap();
+        run_git_hermetic(
+            &bridge_clone,
+            &["remote", "add", "gitlab", gitlab_hub.to_str().unwrap()],
+        )
+        .unwrap();
+
+        std::fs::create_dir_all(bridge_clone.join("objects")).unwrap();
+        let seed_spec = SpecRecord::new("FR-001", "Shared Seed", "Initial");
+        std::fs::write(
+            bridge_clone.join("objects/FR-001.yaml"),
+            serialize_spec(&seed_spec),
+        )
+        .unwrap();
+        std::fs::write(bridge_clone.join("oplog.yaml"), "- op: seed\n").unwrap();
+        run_git_hermetic(&bridge_clone, &["add", "."]).unwrap();
+        run_git_hermetic(&bridge_clone, &["commit", "-m", "seed"]).unwrap();
+        run_git_hermetic(&bridge_clone, &["push", "-u", "origin", "aida-store"]).unwrap();
+        run_git_hermetic(&bridge_clone, &["push", "-u", "gitlab", "aida-store"]).unwrap();
+
+        // Clone work-clone from gitlab_hub only
+        run_git_hermetic(
+            &tmp,
+            &[
+                "clone",
+                "-b",
+                "aida-store",
+                gitlab_hub.to_str().unwrap(),
+                gitlab_only_clone.to_str().unwrap(),
+            ],
+        )
+        .unwrap();
+        run_git_hermetic(&gitlab_only_clone, &["config", "user.name", "Work"]).unwrap();
+        run_git_hermetic(
+            &gitlab_only_clone,
+            &["config", "user.email", "work@test.invalid"],
+        )
+        .unwrap();
+
+        // 1. Bridge clone edits FR-001 title and pushes ONLY to origin
+        let mut origin_spec = seed_spec.clone();
+        apply_spec_edit_recorded(
+            &mut origin_spec,
+            &SpecEditPatch {
+                title: Some("Title on Origin".to_string()),
+                ..Default::default()
+            },
+            "h-origin",
+            "node-origin",
+            10,
+        );
+        std::fs::write(
+            bridge_clone.join("objects/FR-001.yaml"),
+            serialize_spec(&origin_spec),
+        )
+        .unwrap();
+        std::fs::write(
+            bridge_clone.join("oplog.yaml"),
+            "- op: seed\n- op: origin-edit\n",
+        )
+        .unwrap();
+        run_git_hermetic(&bridge_clone, &["add", "."]).unwrap();
+        run_git_hermetic(&bridge_clone, &["commit", "-m", "origin edit"]).unwrap();
+        run_git_hermetic(&bridge_clone, &["push", "origin", "aida-store"]).unwrap();
+
+        // 2. Work clone edits FR-001 description + adds TASK-GL-001 and pushes ONLY to gitlab
+        let mut gl_spec = seed_spec.clone();
+        apply_spec_edit_recorded(
+            &mut gl_spec,
+            &SpecEditPatch {
+                description: Some("Desc on GitLab".to_string()),
+                ..Default::default()
+            },
+            "h-gitlab",
+            "node-gitlab",
+            11,
+        );
+        std::fs::write(
+            gitlab_only_clone.join("objects/FR-001.yaml"),
+            serialize_spec(&gl_spec),
+        )
+        .unwrap();
+        let new_gl_task = SpecRecord::new("TASK-GL-001", "GitLab Task", "Filed on GitLab");
+        std::fs::write(
+            gitlab_only_clone.join("objects/TASK-GL-001.yaml"),
+            serialize_spec(&new_gl_task),
+        )
+        .unwrap();
+        std::fs::write(
+            gitlab_only_clone.join("oplog.yaml"),
+            "- op: seed\n- op: gitlab-edit\n",
+        )
+        .unwrap();
+        run_git_hermetic(&gitlab_only_clone, &["add", "."]).unwrap();
+        run_git_hermetic(&gitlab_only_clone, &["commit", "-m", "gitlab edit"]).unwrap();
+        run_git_hermetic(&gitlab_only_clone, &["push", "origin", "aida-store"]).unwrap();
+
+        // 3. Reconcile diverged origin and gitlab hubs from bridge_clone
+        std::env::set_var("GIT_EDITOR", "false");
+        let union_sha =
+            reconcile_diverged_hubs(&bridge_clone, &["origin", "gitlab"], "aida-store").unwrap();
+
+        // 4. Verify both bare hubs now point to the exact same union commit,
+        //    and both edits + TASK-GL-001 are preserved!
+        let origin_tip = String::from_utf8_lossy(
+            &run_git_hermetic(&origin_hub, &["rev-parse", "refs/heads/aida-store"])
+                .unwrap()
+                .stdout,
+        )
+        .trim()
+        .to_string();
+        let gitlab_tip = String::from_utf8_lossy(
+            &run_git_hermetic(&gitlab_hub, &["rev-parse", "refs/heads/aida-store"])
+                .unwrap()
+                .stdout,
+        )
+        .trim()
+        .to_string();
+        assert_eq!(origin_tip, union_sha);
+        assert_eq!(gitlab_tip, union_sha);
+
+        let merged_fr = deserialize_spec(
+            &std::fs::read_to_string(bridge_clone.join("objects/FR-001.yaml")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(merged_fr.title, "Title on Origin");
+        assert_eq!(merged_fr.description, "Desc on GitLab");
+        assert_eq!(merged_fr.history.len(), 2);
+        assert!(bridge_clone.join("objects/TASK-GL-001.yaml").exists());
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
