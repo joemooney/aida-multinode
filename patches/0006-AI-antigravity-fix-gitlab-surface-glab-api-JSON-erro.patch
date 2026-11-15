@@ -1,0 +1,60 @@
+From 5dff451a51a16819abca8deda81e355b63cba2ea Mon Sep 17 00:00:00 2001
+From: Joe Mooney <joe.mooney@gmail.com>
+Date: Sun, 15 Nov 2026 14:53:43 -0700
+Subject: [PATCH 6/6] [AI:antigravity] fix(gitlab): surface glab api JSON
+ error_description on project creation failure (BUG-MN-008)
+
+---
+ aida-cli-lib/src/gitlab_project_create.rs | 29 ++++++++++++++++++++---
+ 1 file changed, 26 insertions(+), 3 deletions(-)
+
+diff --git a/aida-cli-lib/src/gitlab_project_create.rs b/aida-cli-lib/src/gitlab_project_create.rs
+index 2bcaa3d254a..fcc6c1704a6 100644
+--- a/aida-cli-lib/src/gitlab_project_create.rs
++++ b/aida-cli-lib/src/gitlab_project_create.rs
+@@ -122,6 +122,21 @@ pub(crate) fn parse_namespace_id(body: &str) -> Option<u64> {
+     json.get("id").and_then(|v| v.as_u64())
+ }
+ 
++/// Extract an API error message (`error_description`, `message`, or `error`)
++/// from a GitLab JSON response body when present.
++pub(crate) fn parse_gitlab_api_error(body: &str) -> Option<String> {
++    let json: serde_json::Value = serde_json::from_str(body).ok()?;
++    for key in ["error_description", "message", "error"] {
++        if let Some(msg) = json.get(key).and_then(|v| v.as_str()) {
++            let trimmed = msg.trim();
++            if !trimmed.is_empty() {
++                return Some(trimmed.to_string());
++            }
++        }
++    }
++    None
++}
++
+ /// `glab` argv (after the binary) that creates `name` in `namespace_id`
+ /// (None = the caller's personal namespace). Private unless `public`. Pure.
+ // trace:STORY-1656 | ai:claude
+@@ -220,9 +235,17 @@ pub(crate) fn create_gitlab_project(
+         None
+     } else {
+         let body = run_glab(&token, &namespace_lookup_args(host, namespace))?;
+-        Some(parse_namespace_id(&body).with_context(|| {
+-            format!("could not read the id of GitLab namespace `{namespace}` on {host}")
+-        })?)
++        Some(
++            parse_namespace_id(&body).with_context(|| match parse_gitlab_api_error(&body) {
++                Some(api_err) => format!(
++                    "could not read the id of GitLab namespace `{namespace}` on {host}: {api_err} \
++                     (re-authenticate with `glab auth login --hostname {host}`)"
++                ),
++                None => {
++                    format!("could not read the id of GitLab namespace `{namespace}` on {host}")
++                }
++            })?,
++        )
+     };
+     run_glab(
+         &token,
+-- 
+2.43.0
+

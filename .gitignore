@@ -66,3 +66,6 @@ docs/plans/_draft/
 
 # Rust build artifacts
 /target/
+
+# CodeGraph index (machine-local derived index)
+.codegraph/

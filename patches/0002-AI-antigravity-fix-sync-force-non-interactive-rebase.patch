@@ -1,0 +1,205 @@
+From 7ae5abb76cb4824fa740964b85b1793244c5caf4 Mon Sep 17 00:00:00 2001
+From: Joe Mooney <joe.mooney@gmail.com>
+Date: Sun, 15 Nov 2026 14:53:42 -0700
+Subject: [PATCH 2/6] [AI:antigravity] fix(sync): force non-interactive rebase
+ editor and 3-way scalar merge in merge_spec_upstream (BUG-MN-001 BUG-MN-002)
+
+---
+ aida-core/src/conflict.rs | 117 +++++++++++++++++++++++++++++++++++++-
+ aida-core/src/git_ops.rs  |  23 +++++++-
+ 2 files changed, 135 insertions(+), 5 deletions(-)
+
+diff --git a/aida-core/src/conflict.rs b/aida-core/src/conflict.rs
+index 9aa0b3937c0..f4dee4c53b0 100644
+--- a/aida-core/src/conflict.rs
++++ b/aida-core/src/conflict.rs
+@@ -422,8 +422,8 @@ pub fn merge_spec_three_way(
+     merged
+ }
+ 
+-/// Pull policy: upstream owns scalars; append-only evidence survives from all
+-/// snapshots. This is separate from the symmetric reconciliation policy.
++/// Pull policy: upstream owns conflicting scalars while non-colliding local
++/// scalar edits and append-only evidence survive from all snapshots.
+ // trace:BUG-2501 | ai:codex
+ pub fn merge_spec_upstream(
+     base: &Requirement,
+@@ -431,6 +431,80 @@ pub fn merge_spec_upstream(
+     local: &Requirement,
+ ) -> Requirement {
+     let mut merged = upstream.clone();
++    merged.title = merge_scalar(&base.title, &upstream.title, &local.title, true).clone();
++    merged.description = merge_scalar(
++        &base.description,
++        &upstream.description,
++        &local.description,
++        true,
++    )
++    .clone();
++    merged.status = merge_scalar(&base.status, &upstream.status, &local.status, true).clone();
++    merged.custom_status = merge_scalar(
++        &base.custom_status,
++        &upstream.custom_status,
++        &local.custom_status,
++        true,
++    )
++    .clone();
++    if let Some(terminal_side) = automated_regression_of_terminal(base, upstream, local, &merged) {
++        merged.status = terminal_side.status.clone();
++        merged.custom_status = terminal_side.custom_status.clone();
++    }
++    merged.priority =
++        merge_scalar(&base.priority, &upstream.priority, &local.priority, true).clone();
++    merged.custom_priority = merge_scalar(
++        &base.custom_priority,
++        &upstream.custom_priority,
++        &local.custom_priority,
++        true,
++    )
++    .clone();
++    merged.owner = merge_scalar(&base.owner, &upstream.owner, &local.owner, true).clone();
++    merged.assignee =
++        merge_scalar(&base.assignee, &upstream.assignee, &local.assignee, true).clone();
++    merged.feature = merge_scalar(&base.feature, &upstream.feature, &local.feature, true).clone();
++    merged.weight = *merge_scalar(&base.weight, &upstream.weight, &local.weight, true);
++    merged.archived = *merge_scalar(&base.archived, &upstream.archived, &local.archived, true);
++    merged.archived_at = *merge_scalar(
++        &base.archived_at,
++        &upstream.archived_at,
++        &local.archived_at,
++        true,
++    );
++    merged.deferred = *merge_scalar(&base.deferred, &upstream.deferred, &local.deferred, true);
++    merged.deferred_at = *merge_scalar(
++        &base.deferred_at,
++        &upstream.deferred_at,
++        &local.deferred_at,
++        true,
++    );
++    merged.deferred_until = merge_scalar(
++        &base.deferred_until,
++        &upstream.deferred_until,
++        &local.deferred_until,
++        true,
++    )
++    .clone();
++    merged.human_only = *merge_scalar(
++        &base.human_only,
++        &upstream.human_only,
++        &local.human_only,
++        true,
++    );
++    merged.execution_mode = *merge_scalar(
++        &base.execution_mode,
++        &upstream.execution_mode,
++        &local.execution_mode,
++        true,
++    );
++    merged.origin = merge_scalar(&base.origin, &upstream.origin, &local.origin, true).clone();
++    merged.verify = merge_scalar(&base.verify, &upstream.verify, &local.verify, true).clone();
++    merged.filed_at = base
++        .filed_at
++        .clone()
++        .or_else(|| upstream.filed_at.clone())
++        .or_else(|| local.filed_at.clone());
+     merged.history = union_history(&[&base.history, &upstream.history, &local.history]);
+     merged.comments = union_comments(&[&upstream.comments, &local.comments, &base.comments]);
+     merged.processing_record = union_processing_records(&[
+@@ -456,6 +530,45 @@ pub fn merge_spec_upstream(
+     merged
+ }
+ 
++/// Scalar field names edited in `local` (relative to `base`) that were
++/// overridden by `merged` during a conflicting merge.
++pub fn overridden_scalar_fields(
++    base: &Requirement,
++    merged: &Requirement,
++    local: &Requirement,
++) -> Vec<&'static str> {
++    let mut fields = Vec::new();
++    if local.title != base.title && merged.title != local.title {
++        fields.push("title");
++    }
++    if local.description != base.description && merged.description != local.description {
++        fields.push("description");
++    }
++    if (local.status != base.status || local.custom_status != base.custom_status)
++        && (merged.status != local.status || merged.custom_status != local.custom_status)
++    {
++        fields.push("status");
++    }
++    if (local.priority != base.priority || local.custom_priority != base.custom_priority)
++        && (merged.priority != local.priority || merged.custom_priority != local.custom_priority)
++    {
++        fields.push("priority");
++    }
++    if local.owner != base.owner && merged.owner != local.owner {
++        fields.push("owner");
++    }
++    if local.assignee != base.assignee && merged.assignee != local.assignee {
++        fields.push("assignee");
++    }
++    if local.feature != base.feature && merged.feature != local.feature {
++        fields.push("feature");
++    }
++    if local.weight != base.weight && merged.weight != local.weight {
++        fields.push("weight");
++    }
++    fields
++}
++
+ /// History authors that sign automated (machine-derived) status transitions:
+ /// the merge-driven Done→Completed / Draft→Done auto-bump and the
+ /// `reconcile-status` sweep. A status change authored by anyone else — a
+diff --git a/aida-core/src/git_ops.rs b/aida-core/src/git_ops.rs
+index 2c29a0e9bcd..44f2742d4cb 100644
+--- a/aida-core/src/git_ops.rs
++++ b/aida-core/src/git_ops.rs
+@@ -2251,7 +2251,11 @@ fn rebase_auto_merge_onto(repo: &Path, target: &str) -> Result<StorePullOutcome>
+                 // No conflicts right now but still mid-rebase — let git advance.
+                 // trace:BUG-2490 | ai:codex — continuation can create a store commit.
+                 validate_store_index(repo)?;
+-                let cont = git(repo, &["-c", "core.editor=true", "rebase", "--continue"])?;
++                let cont = git_with_env(
++                    repo,
++                    &["-c", "core.editor=true", "rebase", "--continue"],
++                    &[("GIT_EDITOR", "true"), ("GIT_SEQUENCE_EDITOR", "true")],
++                )?;
+                 if !rebase_in_progress(repo) {
+                     if cont.success || rebase_completed_ok(repo) {
+                         return Ok(if notes.is_empty() {
+@@ -2319,7 +2323,11 @@ fn rebase_auto_merge_onto(repo: &Path, target: &str) -> Result<StorePullOutcome>
+             // message on a TTY-less drain.
+             // trace:BUG-2490 | ai:codex
+             validate_store_index(repo)?;
+-            let cont = git(repo, &["-c", "core.editor=true", "rebase", "--continue"])?;
++            let cont = git_with_env(
++                repo,
++                &["-c", "core.editor=true", "rebase", "--continue"],
++                &[("GIT_EDITOR", "true"), ("GIT_SEQUENCE_EDITOR", "true")],
++            )?;
+             if !rebase_in_progress(repo) {
+                 if cont.success || rebase_completed_ok(repo) {
+                     return Ok(StorePullOutcome::AutoMerged { notes });
+@@ -2759,8 +2767,17 @@ fn resolve_spec_conflict(repo: &Path, path: &str, upstream: bool) -> Result<Stri
+     let hist_count = merged.history.len();
+     let status = merged.effective_status();
+     let policy = if upstream { "upstream" } else { "LWW" };
++    let overridden = crate::conflict::overridden_scalar_fields(&base, &merged, &theirs);
++    let override_suffix = if overridden.is_empty() {
++        String::new()
++    } else {
++        format!(
++            " (conflict: upstream overrode local {})",
++            overridden.join(", ")
++        )
++    };
+     Ok(format!(
+-        "auto-merged {spec_label}: unioned {hist_count} history entr{}, status {policy}={status}",
++        "auto-merged {spec_label}: unioned {hist_count} history entr{}, status {policy}={status}{override_suffix}",
+         if hist_count == 1 { "y" } else { "ies" }
+     ))
+ }
+-- 
+2.43.0
+

@@ -1,0 +1,147 @@
+From e24581bc26bd2ecdd34a19853daf4a1ffbfaba24 Mon Sep 17 00:00:00 2001
+From: Joe Mooney <joe.mooney@gmail.com>
+Date: Sun, 15 Nov 2026 14:53:42 -0700
+Subject: [PATCH 4/6] [AI:antigravity] fix(edit): record FieldChange history
+ entries for scalar and tag edits (BUG-MN-004)
+
+---
+ aida-cli-lib/src/requirements_cli.rs | 69 ++++++++++++++++++++++++++++
+ 1 file changed, 69 insertions(+)
+
+diff --git a/aida-cli-lib/src/requirements_cli.rs b/aida-cli-lib/src/requirements_cli.rs
+index 43a6b3e638f..763f9f0a283 100644
+--- a/aida-cli-lib/src/requirements_cli.rs
++++ b/aida-cli-lib/src/requirements_cli.rs
+@@ -8581,11 +8581,26 @@ fn run_edit(
+                     // the saved requirement. trace:TASK-1450 | ai:claude
+                     let mut disposition_event: Option<(String, String)> = None;
+                     let mut execution_mode_event: Option<(Option<String>, Option<String>)> = None;
++                    let mut field_changes: Vec<aida_core::FieldChange> = Vec::new();
+                     if let Some(t) = title {
++                        if &req.title != t {
++                            field_changes.push(aida_core::FieldChange {
++                                field_name: "title".to_string(),
++                                old_value: req.title.clone(),
++                                new_value: t.clone(),
++                            });
++                        }
+                         req.title = t.clone();
+                         changed = true;
+                     }
+                     if let Some(d) = description {
++                        if &req.description != d {
++                            field_changes.push(aida_core::FieldChange {
++                                field_name: "description".to_string(),
++                                old_value: req.description.clone(),
++                                new_value: d.clone(),
++                            });
++                        }
+                         req.description = d.clone();
+                         changed = true;
+                     }
+@@ -8980,7 +8995,16 @@ fn run_edit(
+                     if let Some(p) = priority {
+                         let canonical =
+                             validate_priority_input(p).map_err(|e| anyhow::anyhow!(e))?;
++                        let old_priority = req.effective_priority().to_string();
+                         req.set_priority_from_str(canonical);
++                        let new_priority = req.effective_priority().to_string();
++                        if old_priority != new_priority {
++                            field_changes.push(aida_core::FieldChange {
++                                field_name: "priority".to_string(),
++                                old_value: old_priority,
++                                new_value: new_priority,
++                            });
++                        }
+                         changed = true;
+                     }
+                     if let Some(t) = r#type {
+@@ -9015,6 +9039,13 @@ fn run_edit(
+                                 );
+                             }
+                         }
++                        if req.req_type != rt {
++                            field_changes.push(aida_core::FieldChange {
++                                field_name: "type".to_string(),
++                                old_value: req.req_type.to_string(),
++                                new_value: rt.to_string(),
++                            });
++                        }
+                         req.req_type = rt;
+                         changed = true;
+                     }
+@@ -9029,10 +9060,24 @@ fn run_edit(
+                         changed = true;
+                     }
+                     if let Some(o) = owner {
++                        if &req.owner != o {
++                            field_changes.push(aida_core::FieldChange {
++                                field_name: "owner".to_string(),
++                                old_value: req.owner.clone(),
++                                new_value: o.clone(),
++                            });
++                        }
+                         req.owner = o.clone();
+                         changed = true;
+                     }
+                     if let Some(f) = feature {
++                        if &req.feature != f {
++                            field_changes.push(aida_core::FieldChange {
++                                field_name: "feature".to_string(),
++                                old_value: req.feature.clone(),
++                                new_value: f.clone(),
++                            });
++                        }
+                         req.feature = f.clone();
+                         changed = true;
+                     }
+@@ -9060,6 +9105,17 @@ fn run_edit(
+                                 msg
+                             );
+                         }
++                        if old_tags != req.tags {
++                            let mut old_sorted: Vec<_> = old_tags.iter().cloned().collect();
++                            old_sorted.sort();
++                            let mut new_sorted: Vec<_> = req.tags.iter().cloned().collect();
++                            new_sorted.sort();
++                            field_changes.push(aida_core::FieldChange {
++                                field_name: "tags".to_string(),
++                                old_value: old_sorted.join(", "),
++                                new_value: new_sorted.join(", "),
++                            });
++                        }
+                         changed = true;
+                     }
+                     // TASK-351: partial tag edits that don't clobber the rest.
+@@ -9072,8 +9128,18 @@ fn run_edit(
+                     // that matched nothing used to fall through to the generic
+                     // "No changes specified" line, which tells the caller to pass a
+                     // flag they already passed. trace:BUG-1770 | ai:claude
++                    let old_tags_for_delta = req.tags.clone();
+                     let tag_report = apply_tag_deltas_report(&mut req.tags, add_tag, remove_tag)?;
+                     if tag_report.changed() {
++                        let mut old_sorted: Vec<_> = old_tags_for_delta.iter().cloned().collect();
++                        old_sorted.sort();
++                        let mut new_sorted: Vec<_> = req.tags.iter().cloned().collect();
++                        new_sorted.sort();
++                        field_changes.push(aida_core::FieldChange {
++                            field_name: "tags".to_string(),
++                            old_value: old_sorted.join(", "),
++                            new_value: new_sorted.join(", "),
++                        });
+                         changed = true;
+                     }
+                     // TASK-524: typo guard — a `lifecycle:*` tag that isn't a recognized
+@@ -9145,6 +9211,9 @@ fn run_edit(
+                     }
+ 
+                     if changed {
++                        if !field_changes.is_empty() {
++                            req.record_change(get_default_author(), field_changes);
++                        }
+                         req.modified_at = chrono::Utc::now();
+                         // STORY-1429 / TASK-1506: one targeted write through the
+                         // per-spec compare-and-swap. Under the store lock the spec is
+-- 
+2.43.0
+

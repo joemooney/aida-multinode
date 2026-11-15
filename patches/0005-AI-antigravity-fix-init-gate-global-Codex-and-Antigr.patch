@@ -1,0 +1,40 @@
+From ca58b794c46e5b82b4ecac79c1c120eebfda2f10 Mon Sep 17 00:00:00 2001
+From: Joe Mooney <joe.mooney@gmail.com>
+Date: Sun, 15 Nov 2026 14:53:43 -0700
+Subject: [PATCH 5/6] [AI:antigravity] fix(init): gate global Codex and
+ Antigravity MCP registration on --with-mcp (BUG-MN-007)
+
+---
+ aida-cli-lib/src/init_cmd.rs | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/aida-cli-lib/src/init_cmd.rs b/aida-cli-lib/src/init_cmd.rs
+index 94e7561497b..a6fdd033166 100644
+--- a/aida-cli-lib/src/init_cmd.rs
++++ b/aida-cli-lib/src/init_cmd.rs
+@@ -1939,9 +1939,10 @@ fn complete_init_scaffolding(
+         }
+     }
+ 
+-    // Auto-configure Codex MCP if codex is installed and the Codex profile was
+-    // selected for this project. trace:STORY-807 | ai:codex
+-    if codex_profile_selected
++    // Auto-configure Codex MCP if codex is installed and `--with-mcp` was
++    // requested for this project. trace:STORY-807 | ai:codex
++    if with_mcp
++        && codex_profile_selected
+         && std::process::Command::new("codex")
+             .arg("--version")
+             .output()
+@@ -1973,7 +1974,7 @@ fn complete_init_scaffolding(
+         }
+     }
+ 
+-    if antigravity_profile_selected {
++    if with_mcp && antigravity_profile_selected {
+         if let Err(e) = maybe_offer_antigravity_mcp_registration() {
+             eprintln!(
+                 "  {} Antigravity MCP setup skipped: {}",
+-- 
+2.43.0
+

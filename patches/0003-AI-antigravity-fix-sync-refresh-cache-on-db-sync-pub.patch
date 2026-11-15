@@ -1,0 +1,174 @@
+From 7fe66720b8b37181603b3f317c64552060d54229 Mon Sep 17 00:00:00 2001
+From: Joe Mooney <joe.mooney@gmail.com>
+Date: Sun, 15 Nov 2026 14:53:42 -0700
+Subject: [PATCH 3/6] [AI:antigravity] fix(sync): refresh cache on db sync,
+ publish mailbox on push, and fix FF pull conflict detection (BUG-MN-003
+ BUG-MN-005 BUG-MN-007)
+
+---
+ aida-cli-lib/src/db_cmd.rs          | 35 ++++++++++++++++++++++++++---
+ aida-cli-lib/src/git_backend_cmd.rs | 21 ++++++++++++-----
+ aida-cli-lib/src/store_push_pull.rs |  3 ++-
+ aida-core/src/mailbox_identity.rs   | 33 +++++++++++++++++++++++++++
+ 4 files changed, 82 insertions(+), 10 deletions(-)
+
+diff --git a/aida-cli-lib/src/db_cmd.rs b/aida-cli-lib/src/db_cmd.rs
+index aee3943896f..fb3e66ac188 100644
+--- a/aida-cli-lib/src/db_cmd.rs
++++ b/aida-cli-lib/src/db_cmd.rs
+@@ -692,6 +692,13 @@ fn run_db(
+                     // BUG-2565: the whole sync as one closure so a pull-only
+                     // sync can coalesce with a concurrent one. trace:BUG-2565 | ai:claude
+                     let sync = || -> Result<()> {
++                        // Digest local `.aida/mailbox/` messages into `<store>/mailbox/`
++                        // before committing and pushing, matching `aida push`.
++                        let mailbox = if *push {
++                            crate::mailbox_publish_snapshot(store_path, "db-sync")
++                        } else {
++                            None
++                        };
+                         // trace:TASK-1717 | ai:claude — the pending commit, the pull
+                         // --rebase and its own cleanup, the collision scan and the
+                         // capture of the commit to push are ONE store-writer transaction
+@@ -699,9 +706,28 @@ fn run_db(
+                         // mailbox digest or second sync can touch the index/HEAD between
+                         // them. The push, mirrors, auto-bump and maintenance run after
+                         // the lock is released.
+-                        let window = aida_core::db::with_store_write_lock(store_path, || {
+-                            db_sync_local_window(store_path, *pull, *push, message.as_deref())
+-                        })?;
++                        let (window, mailbox_published) =
++                            aida_core::db::with_store_write_lock(store_path, || {
++                                let mailbox = mailbox;
++                                let published = mailbox
++                                    .as_ref()
++                                    .map(|publication| {
++                                        crate::publish_mailbox_snapshot(
++                                            store_path,
++                                            publication,
++                                            "db-sync",
++                                        )
++                                    })
++                                    .unwrap_or(0);
++                                let window = db_sync_local_window(
++                                    store_path,
++                                    *pull,
++                                    *push,
++                                    message.as_deref(),
++                                )?;
++                                Ok((window, published))
++                            })?;
++                        crate::report_mailbox_published(mailbox_published, "db-sync");
+                         let branch = window.branch.clone();
+                         let push_sha = window.head;
+ 
+@@ -779,6 +805,9 @@ fn run_db(
+                         // Best-effort; never fails the sync.
+                         if *pull || *push {
+                             aida_core::git_ops::opportunistic_store_gc(store_path);
++                            if backend.cache().path().exists() {
++                                let _ = backend.ensure_cache_fresh_with_schema_retry();
++                            }
+                         }
+                         Ok(())
+                     };
+diff --git a/aida-cli-lib/src/git_backend_cmd.rs b/aida-cli-lib/src/git_backend_cmd.rs
+index 2a40a31682b..1081c6542d8 100644
+--- a/aida-cli-lib/src/git_backend_cmd.rs
++++ b/aida-cli-lib/src/git_backend_cmd.rs
+@@ -1412,7 +1412,8 @@ pub(crate) fn db_sync_local_window(
+         // trace:BUG-2490 | ai:codex — expose scalar resolution decisions during sync.
+         if let aida_core::git_ops::StorePullOutcome::AutoMerged { notes } = &outcome {
+             for note in notes {
+-                println!("  {} {}", "auto-merged".cyan().bold(), note);
++                let body = note.strip_prefix("auto-merged ").unwrap_or(note);
++                println!("  {} {}", "auto-merged".cyan().bold(), body);
+             }
+         }
+         println!("  Pull complete.");
+@@ -1426,11 +1427,19 @@ pub(crate) fn db_sync_local_window(
+                 crate::spec_id_collision_recovery_message(&collisions, store_path)
+             );
+         }
+-        // Detect conflicts with remote changes
+-        conflicts = Some(aida_core::conflict::detect_store_conflicts(
+-            &local_reqs,
+-            &remote.requirements,
+-        ));
++        // Detect conflicts with remote changes only when the pull actually
++        // rebased/auto-merged divergent commits (fast-forward pulls have no
++        // local edits to conflict with).
++        conflicts = Some(
++            if matches!(
++                outcome,
++                aida_core::git_ops::StorePullOutcome::AutoMerged { .. }
++            ) {
++                aida_core::conflict::detect_store_conflicts(&local_reqs, &remote.requirements)
++            } else {
++                Vec::new()
++            },
++        );
+     }
+ 
+     Ok(DbSyncWindow {
+diff --git a/aida-cli-lib/src/store_push_pull.rs b/aida-cli-lib/src/store_push_pull.rs
+index 177264700b5..55cef0ed946 100644
+--- a/aida-cli-lib/src/store_push_pull.rs
++++ b/aida-cli-lib/src/store_push_pull.rs
+@@ -2586,7 +2586,8 @@ pub(crate) fn pull_store_leg_locked(
+     let _scan_phase = PullPhase::start("store collision scan/gate");
+     if let git_ops::StorePullOutcome::AutoMerged { notes } = &outcome {
+         for note in notes {
+-            println!("  {} {}", "auto-merged".cyan().bold(), note);
++            let body = note.strip_prefix("auto-merged ").unwrap_or(note);
++            println!("  {} {}", "auto-merged".cyan().bold(), body);
+         }
+     }
+     println!("  {}", "store pull complete".green());
+diff --git a/aida-core/src/mailbox_identity.rs b/aida-core/src/mailbox_identity.rs
+index 8edf858e888..a56953d96e5 100644
+--- a/aida-core/src/mailbox_identity.rs
++++ b/aida-core/src/mailbox_identity.rs
+@@ -206,6 +206,39 @@ impl PeopleCatalogView {
+             add(canonical);
+             add(alias);
+         }
++        let mut add_author = |author: &str| {
++            let t = author.trim();
++            if !t.is_empty()
++                && !t.eq_ignore_ascii_case("unknown")
++                && !t.eq_ignore_ascii_case("aida")
++                && !t.starts_with("ai:")
++                && !t.starts_with("aida-")
++                && crate::mailbox::recipient_id_rejection(t).is_none()
++            {
++                add(t);
++            }
++        };
++        if let Ok(oplog) = crate::oplog::OpLog::load(&store_root.join("oplog.yaml")) {
++            for op in &oplog.operations {
++                add_author(&op.author);
++                if let crate::oplog::OpKind::AddComment { author, .. } = &op.kind {
++                    add_author(author);
++                }
++            }
++        }
++        let objects_dir = store_root.join("objects");
++        if let Ok(objects) = crate::object_store::list_objects(&objects_dir) {
++            for (_stem, path) in objects {
++                if let Ok(req) = crate::object_store::read_object_from_path(&path) {
++                    if let Some(creator) = &req.created_by {
++                        add_author(creator);
++                    }
++                    for comment in &req.comments {
++                        add_author(&comment.author);
++                    }
++                }
++            }
++        }
+         Self { by_key }
+     }
+ 
+-- 
+2.43.0
+

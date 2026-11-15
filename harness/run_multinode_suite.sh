@@ -160,7 +160,8 @@ t0=$(now_ms)
   HOME="$T/home-b" AIDA_USER=node-b "$AIDA_BIN" db sync --pull < /dev/null >/dev/null 2>&1
 )
 t1=$(now_ms)
-if (cd "$T/node-b" && HOME="$T/home-b" AIDA_USER=node-b "$AIDA_BIN" show FR-NODEA-001 < /dev/null 2>/dev/null | grep -q "S1 Feature from A"); then
+S1_SHOW_OUT=$(cd "$T/node-b" && HOME="$T/home-b" AIDA_USER=node-b "$AIDA_BIN" show FR-NODEA-001 < /dev/null 2>/dev/null || true)
+if grep -q "S1 Feature from A" <<<"$S1_SHOW_OUT"; then
   record_result "S1 (Add on A -> Pull on B)" "PASS" "$((t1 - t0))" "FR-NODEA-001 visible on B"
 else
   record_result "S1 (Add on A -> Pull on B)" "FAIL" "$((t1 - t0))" "FR-NODEA-001 missing on B"
@@ -269,9 +270,10 @@ t0=$(now_ms)
   cd "$T/node-b"
   HOME="$T/home-b" AIDA_USER=node-b "$AIDA_BIN" db sync --pull < /dev/null >/dev/null 2>&1
 )
-S6_CACHE_OUT=$(cd "$T/node-b" && HOME="$T/home-b" AIDA_USER=node-b "$AIDA_BIN" cache status < /dev/null 2>&1)
+S6_SHOW_OUT=$(cd "$T/node-b" && HOME="$T/home-b" AIDA_USER=node-b AIDA_AGENT_OUTPUT=toon "$AIDA_BIN" show FR-NODEA-001 < /dev/null 2>&1 || true)
+S6_CACHE_OUT=$(cd "$T/node-b" && HOME="$T/home-b" AIDA_USER=node-b "$AIDA_BIN" cache status < /dev/null 2>&1 || true)
 t1=$(now_ms)
-if echo "$S6_CACHE_OUT" | grep -qi "stale"; then
+if echo "$S6_SHOW_OUT" | grep -qiE "stale:[[:space:]]*true" || echo "$S6_CACHE_OUT" | grep -qiE "Status:[[:space:]]*STALE|stale:[[:space:]]*true"; then
   record_result "S6 (Cache freshness on sync)" "WARN" "$((t1 - t0))" "BUG-MN-005: cache.db left stale after aida db sync --pull"
 else
   record_result "S6 (Cache freshness on sync)" "PASS" "$((t1 - t0))" "cache.db fresh immediately after aida db sync --pull"
