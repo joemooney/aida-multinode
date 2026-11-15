@@ -11,8 +11,18 @@ priority: Medium
 owner: ''
 feature: Uncategorized
 created_at: 2026-11-15T20:04:51.513308273Z
-modified_at: 2026-11-15T20:04:51.513308273Z
+modified_at: 2026-11-15T20:05:13.078357926Z
 req_type: Bug
+relationships:
+- rel_type: Child
+  target_id: 01a1e0cf-f1b4-7453-be52-8aa9792405ca
+  created_at: 2026-11-15T20:05:13.078355048Z
+  created_by: joe
+history:
+- id: 01a1e0d0-592f-7712-bd23-24ef72acdfdc
+  author: joe
+  timestamp: 2026-11-15T20:05:13.135940562Z
+  changes: []
 filed_at:
   code_sha: 23cb96c1828e30f7c47d35f15da5cbc94acfa92e
   branch: main
