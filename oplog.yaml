@@ -145,5 +145,21 @@ operations:
     req_type: Story
     status: Draft
     priority: High
-clock: 9
+- id: 01a1e0d0-0f92-7f32-a285-5d519065b767
+  target_id: 01a1e0d0-0f18-7a93-8739-ff8a75d4216e
+  author: aida
+  node_id: ''
+  lamport: 10
+  timestamp: 2026-11-15T20:04:54.290949469Z
+  kind: !Create
+    title: Standalone aida-store-sync Rust crate prototype extracting merge, conflict, rebase, and provenance logic
+    description: |-
+      Factor out the core multi-node synchronization logic into crates/aida-store-sync with clean interfaces and unit/integration tests demonstrating the fixes for BUG-MN-001 through BUG-MN-006.
+
+      ## Acceptance
+      - cargo test in /home/joe/ai/aida-multinode passes all unit and multi-clone Git rebase integration tests.
+    req_type: Story
+    status: Draft
+    priority: High
+clock: 10
 node_id: ''
