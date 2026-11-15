@@ -1,0 +1,8 @@
+[package]
+name = "aida-store-sync"
+version = "0.1.0"
+edition = "2021"
+description = "Standalone AIDA multi-node store synchronization, 3-way spec merge, conflict detection, hermetic Git rebase, and provenance engine."
+license = "MIT"
+
+[dependencies]
