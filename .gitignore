@@ -63,3 +63,6 @@ docs/plans/_draft/
 # trace:TASK-1744 | ai:antigravity
 .agents/hooks/
 .agents/hooks.json
+
+# Rust build artifacts
+/target/
