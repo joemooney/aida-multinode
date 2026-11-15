@@ -1,0 +1,35 @@
+id: 01a1e0ce-1ec1-7c83-b953-456a67e2b91a
+spec_id: META-d530fb089bc1489a800b2058e5cccc62-001
+title: AI Prompts
+description: Default AI prompt templates. Edit these to customize how AI analyzes and improves requirements.
+status: Draft
+priority: Medium
+owner: ''
+feature: Uncategorized
+created_at: 2026-11-15T20:02:47.105748233Z
+modified_at: 2026-11-15T20:02:47.105748233Z
+req_type: Meta
+meta_subtype: Prompt
+relationships:
+- rel_type: Child
+  target_id: 01a1e0ce-1ec5-7763-b0a9-e9a1642e9409
+  created_at: 2026-11-15T20:02:47.112878027Z
+- rel_type: Child
+  target_id: 01a1e0ce-1ec8-7d71-a204-2148748331b5
+  created_at: 2026-11-15T20:02:47.116192127Z
+- rel_type: Child
+  target_id: 01a1e0ce-1ecc-7710-8f17-d20eb728e4ee
+  created_at: 2026-11-15T20:02:47.119759884Z
+- rel_type: Child
+  target_id: 01a1e0ce-1ecf-7801-af31-4a94093bb973
+  created_at: 2026-11-15T20:02:47.122949108Z
+- rel_type: Child
+  target_id: 01a1e0ce-1ed2-7600-bda6-9640c9d4cb4a
+  created_at: 2026-11-15T20:02:47.126106681Z
+filed_at:
+  code_sha: 9cdde42c217508d68507eb3c63b9e6b5068cd939
+  branch: main
+  dirty: false
+  aida_version: 0.16.0
+  aida_build_sha: 8ea91f58a48
+  vendor: antigravity

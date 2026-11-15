@@ -1,0 +1,25 @@
+id: 01a1e0ce-1ee2-7bd2-831b-61cafcadfb85
+spec_id: META-d530fb089bc1489a800b2058e5cccc62-011
+title: decision protocol
+description: |-
+  Purpose: make and preserve an architecture decision.
+  Deliverable: an ADR recording context, options, decision, and consequences.
+  Before done: status is accepted and references connect the decision to affected work.
+  Reviewer: checks alternatives, evidence, reversibility, and consequences.
+  Human boundary: the accountable human accepts consequential or taste-based choices.
+status: Draft
+priority: Medium
+owner: ''
+feature: Uncategorized
+created_at: 2026-11-15T20:02:47.138727894Z
+modified_at: 2026-11-15T20:02:47.138727894Z
+req_type: Meta
+tags:
+- protocol:decision
+filed_at:
+  code_sha: 9cdde42c217508d68507eb3c63b9e6b5068cd939
+  branch: main
+  dirty: false
+  aida_version: 0.16.0
+  aida_build_sha: 8ea91f58a48
+  vendor: antigravity

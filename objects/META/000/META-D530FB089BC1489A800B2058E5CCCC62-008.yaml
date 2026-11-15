@@ -1,0 +1,25 @@
+id: 01a1e0ce-1ed9-7403-970d-e2f6b9c17f45
+spec_id: META-d530fb089bc1489a800b2058e5cccc62-008
+title: bug protocol
+description: |-
+  Purpose: restore intended behavior and prevent recurrence.
+  Deliverable: a focused fix plus a regression test.
+  Before done: reproduce or characterize the failure, make the test fail before the fix where practical, and run the relevant suite.
+  Reviewer: checks the root cause, regression coverage, and blast radius.
+  Human boundary: product-policy changes are decisions, not bug fixes.
+status: Draft
+priority: Medium
+owner: ''
+feature: Uncategorized
+created_at: 2026-11-15T20:02:47.129268694Z
+modified_at: 2026-11-15T20:02:47.129268694Z
+req_type: Meta
+tags:
+- protocol:bug
+filed_at:
+  code_sha: 9cdde42c217508d68507eb3c63b9e6b5068cd939
+  branch: main
+  dirty: false
+  aida_version: 0.16.0
+  aida_build_sha: 8ea91f58a48
+  vendor: antigravity
