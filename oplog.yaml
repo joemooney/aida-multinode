@@ -129,5 +129,21 @@ operations:
     req_type: Bug
     status: Draft
     priority: Low
-clock: 8
+- id: 01a1e0d0-0b9d-7a11-adde-a16e1b1227ae
+  target_id: 01a1e0d0-0b24-7cc3-a4ff-d941de5c2bbb
+  author: aida
+  node_id: ''
+  lamport: 9
+  timestamp: 2026-11-15T20:04:53.277971647Z
+  kind: !Create
+    title: Automated repeatable multi-node S1-S7 test harness (harness/run_multinode_suite.sh)
+    description: |-
+      Provide a self-contained script in harness/run_multinode_suite.sh that spins up an isolated bare hub, seed repo, node-a, and node-b, executes Setup and Scenarios S1-S7 against any target aida binary, and reports pass/fail verdicts and latencies.
+
+      ## Acceptance
+      - ./harness/run_multinode_suite.sh runs Setup + S1-S7 in an isolated temp dir without touching GitHub/GitLab or ~/ai/aida.
+    req_type: Story
+    status: Draft
+    priority: High
+clock: 9
 node_id: ''

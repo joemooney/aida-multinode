@@ -1,0 +1,22 @@
+id: 01a1e0d0-0b24-7cc3-a4ff-d941de5c2bbb
+spec_id: STORY-d530fb089bc1489a800b2058e5cccc62-001
+title: Automated repeatable multi-node S1-S7 test harness (harness/run_multinode_suite.sh)
+description: |-
+  Provide a self-contained script in harness/run_multinode_suite.sh that spins up an isolated bare hub, seed repo, node-a, and node-b, executes Setup and Scenarios S1-S7 against any target aida binary, and reports pass/fail verdicts and latencies.
+
+  ## Acceptance
+  - ./harness/run_multinode_suite.sh runs Setup + S1-S7 in an isolated temp dir without touching GitHub/GitLab or ~/ai/aida.
+status: Draft
+priority: High
+owner: ''
+feature: Uncategorized
+created_at: 2026-11-15T20:04:53.156710370Z
+modified_at: 2026-11-15T20:04:53.156710370Z
+req_type: Story
+filed_at:
+  code_sha: 23cb96c1828e30f7c47d35f15da5cbc94acfa92e
+  branch: main
+  dirty: false
+  aida_version: 0.16.0
+  aida_build_sha: 8ea91f58a48
+  vendor: antigravity
