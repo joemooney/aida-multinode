@@ -62,5 +62,21 @@ operations:
     req_type: Bug
     status: Draft
     priority: High
-clock: 4
+- id: 01a1e0cf-ff25-77b0-a89d-7b986069cfa4
+  target_id: 01a1e0cf-feb2-7d62-9305-1729ea4ebe8a
+  author: aida
+  node_id: ''
+  lamport: 5
+  timestamp: 2026-11-15T20:04:50.085608370Z
+  kind: !Create
+    title: Git-canonical aida edit fails to record FieldChange entries in req.history for scalar and tag edits (S4)
+    description: |-
+      In aida-cli-lib/src/requirements_cli.rs:8584-9079, the git-canonical Command::Edit arm mutates title, description, priority, type, owner, feature, tags, and weight directly without calling Requirement::field_change or record_edit_changes. Consequently stamp_write_impl appends a fallback write_event with changes: [], losing the field-level audit trail.
+
+      ## Acceptance
+      - Git-canonical aida edit records FieldChange entries in req.history for all edited scalar and tag fields.
+    req_type: Bug
+    status: Draft
+    priority: Medium
+clock: 5
 node_id: ''
