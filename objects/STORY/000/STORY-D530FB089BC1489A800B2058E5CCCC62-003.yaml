@@ -1,0 +1,23 @@
+id: 01a1e0f6-dd7a-7650-b819-4aa496213b4d
+spec_id: STORY-d530fb089bc1489a800b2058e5cccc62-003
+title: Expand multi-node test suite and aida-store-sync crate to cover multi-hub GitLab mirroring, drift, reconcile, and push-hubs (S8-S11)
+description: |-
+  Extend harness/run_multinode_suite.sh and crates/aida-store-sync with multi-hub GitLab test cases:
+  - S8: aida remote mirror gitlab + store fan-out on aida db sync --push
+  - S9: aida remote status drift detection + aida remote mirror-sync catch-up
+  - S10: aida remote reconcile --execute structural union-merge across diverged origin and gitlab hubs
+  - S11: aida remote push-hubs gitlab restricted work-clone routing + bridge reconciliation
+status: Draft
+priority: High
+owner: ''
+feature: Uncategorized
+created_at: 2026-11-15T20:47:17.370390645Z
+modified_at: 2026-11-15T20:47:17.370390645Z
+req_type: Story
+filed_at:
+  code_sha: 6c4b133dd254149d39122de5db9754004dbe1b20
+  branch: main
+  dirty: false
+  aida_version: 0.16.0
+  aida_build_sha: da63062280e
+  vendor: antigravity
