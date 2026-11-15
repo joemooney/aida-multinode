@@ -1,0 +1,23 @@
+id: 01a1e0cf-f81a-71b2-9178-9a46ea427fd0
+spec_id: BUG-d530fb089bc1489a800b2058e5cccc62-002
+title: merge_spec_upstream discards non-colliding local scalar edits and db_sync_push_leg hides scalar overwrites (S4a)
+description: |-
+  In aida-core/src/conflict.rs:428, merge_spec_upstream clones upstream for all scalar fields instead of performing a 3-way per-field merge_scalar against base, dropping non-colliding local scalar edits. In addition, resolve_spec_conflict (git_ops.rs:2762) and db_sync_push_leg (db_cmd.rs:500) do not report which scalar fields were overridden by upstream when a push-retry rebase occurs.
+
+  ## Acceptance
+  - merge_spec_upstream uses merge_scalar(base, upstream, local, true) so single-side local scalar edits survive while upstream wins same-field collisions.
+  - resolve_spec_conflict and db_sync_push_leg surface overridden scalar fields.
+status: Draft
+priority: High
+owner: ''
+feature: Uncategorized
+created_at: 2026-11-15T20:04:48.282172799Z
+modified_at: 2026-11-15T20:04:48.282172799Z
+req_type: Bug
+filed_at:
+  code_sha: 23cb96c1828e30f7c47d35f15da5cbc94acfa92e
+  branch: main
+  dirty: false
+  aida_version: 0.16.0
+  aida_build_sha: 8ea91f58a48
+  vendor: antigravity
