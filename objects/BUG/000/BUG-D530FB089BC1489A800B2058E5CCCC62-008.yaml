@@ -12,13 +12,19 @@ priority: High
 owner: ''
 feature: Uncategorized
 created_at: 2026-11-15T20:47:14.673996946Z
-modified_at: 2026-11-15T20:47:21.995496522Z
+modified_at: 2026-11-15T21:57:35.466148215Z
 req_type: Bug
 relationships:
 - rel_type: Child
   target_id: 01a1e0cf-f1b4-7453-be52-8aa9792405ca
   created_at: 2026-11-15T20:47:21.995492460Z
   created_by: joe
+comments:
+- id: 01a1e137-3a6a-77f0-99eb-84d881de2c34
+  author: joe
+  content: Fixed and verified on branch fix/multinode-sync-bugs (/home/joe/ai/aida-multinode-fixes); exported 6-commit patch series under patches/ and verified 12/12 PASS (0 failures, 0 warnings) via harness/run_multinode_suite.sh --strict.
+  created_at: 2026-11-15T21:57:35.466148215Z
+  modified_at: 2026-11-15T21:57:35.466148215Z
 history:
 - id: 01a1e0f6-efce-7ab1-8c9e-7891b61d2f58
   author: joe
