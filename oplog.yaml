@@ -1,0 +1,15 @@
+operations:
+- id: 01a1e0cf-f227-7f73-8718-54ddaee37f5e
+  target_id: 01a1e0cf-f1b4-7453-be52-8aa9792405ca
+  author: aida
+  node_id: ''
+  lamport: 1
+  timestamp: 2026-11-15T20:04:46.759088820Z
+  kind: !Create
+    title: Multi-node store synchronization test suite, bug remediation, and aida-store-sync extraction
+    description: Umbrella epic tracking the multi-node store synchronization test suite (S1-S7), all bugs/surprises uncovered in aida 0.16.0 (0dacba5a25e), behavioral documentation, and the standalone aida-store-sync Rust crate prototype.
+    req_type: Epic
+    status: Draft
+    priority: Medium
+clock: 1
+node_id: ''
