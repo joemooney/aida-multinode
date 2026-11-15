@@ -14,8 +14,18 @@ priority: Low
 owner: ''
 feature: Uncategorized
 created_at: 2026-11-15T20:04:52.253518175Z
-modified_at: 2026-11-15T20:04:52.253518175Z
+modified_at: 2026-11-15T20:05:14.960551582Z
 req_type: Bug
+relationships:
+- rel_type: Child
+  target_id: 01a1e0cf-f1b4-7453-be52-8aa9792405ca
+  created_at: 2026-11-15T20:05:14.960548876Z
+  created_by: joe
+history:
+- id: 01a1e0d0-6089-76d3-870d-17b0d0736cef
+  author: joe
+  timestamp: 2026-11-15T20:05:15.017554899Z
+  changes: []
 filed_at:
   code_sha: 23cb96c1828e30f7c47d35f15da5cbc94acfa92e
   branch: main
