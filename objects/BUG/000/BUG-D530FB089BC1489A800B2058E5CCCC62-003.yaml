@@ -1,0 +1,23 @@
+id: 01a1e0cf-fb5a-7141-9dc5-1f41b94b590a
+spec_id: BUG-d530fb089bc1489a800b2058e5cccc62-003
+title: db_sync_local_window and detect_conflict report false-positive conflicts on fast-forward pulls (S3)
+description: |-
+  In aida-cli-lib/src/git_backend_cmd.rs:1420 and aida-core/src/conflict.rs:59, detect_store_conflicts compares pre-pull and post-pull store snapshots using only modified_at inequality without checking whether the pull was a clean fast-forward. Any remote edit triggers a bogus 'Conflicts detected' block on aida db sync --pull. Also fixes duplicate 'auto-merged auto-merged' prefix at git_backend_cmd.rs:1415 and store_push_pull.rs:2589.
+
+  ## Acceptance
+  - Fast-forward aida db sync --pull does not emit false-positive conflict alerts.
+  - Auto-merge notes do not duplicate the 'auto-merged' prefix.
+status: Draft
+priority: High
+owner: ''
+feature: Uncategorized
+created_at: 2026-11-15T20:04:49.114062254Z
+modified_at: 2026-11-15T20:04:49.114062254Z
+req_type: Bug
+filed_at:
+  code_sha: 23cb96c1828e30f7c47d35f15da5cbc94acfa92e
+  branch: main
+  dirty: false
+  aida_version: 0.16.0
+  aida_build_sha: 8ea91f58a48
+  vendor: antigravity
