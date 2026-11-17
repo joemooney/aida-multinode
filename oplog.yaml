@@ -195,5 +195,17 @@ operations:
     req_type: Story
     status: Draft
     priority: High
-clock: 12
+- id: 01a1eaa4-6ced-7892-b9b5-3e46bc75afc5
+  target_id: 01a1eaa4-6c1d-7071-88ca-d1aefcf9b8f5
+  author: joe
+  node_id: ''
+  lamport: 13
+  timestamp: 2026-11-17T17:53:26.765753205Z
+  kind: !Create
+    title: intent_intake::sync_branch fast-forwards foreign writes on an enrolled writer's own feedback branch instead of refusing (S18 / STORY-2652 R4)
+    description: In Profile v2 per-writer feedback mode (aida intent enroll --role producer --writer-id <id>), each producer owns an exclusive branch refs/heads/aida-feedback-<writer_id>. Per STORY-2652 Advisor Ruling R4, if the remote tip of an enrolled writer's own branch advances ahead of what that clone published, aida intent pull / publish must refuse rather than fast-forwarding. Fixed in aida-cli-lib/src/intent_intake.rs::sync_branch and verified by S18 + per_writer_own_branch_foreign_write_refuses_r4.
+    req_type: Bug
+    status: Draft
+    priority: Medium
+clock: 13
 node_id: ''
