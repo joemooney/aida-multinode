@@ -9,6 +9,15 @@ feature: Uncategorized
 created_at: 2026-11-17T17:53:26.557072434Z
 modified_at: 2026-11-17T17:53:26.557072434Z
 req_type: Bug
+relationships:
+- rel_type: Child
+  target_id: 01a1e0cf-f1b4-7453-be52-8aa9792405ca
+  created_at: 2026-11-17T17:53:27.323103729Z
+history:
+- id: 01a1eaa4-6f55-7ea0-8741-0c58e10257c2
+  author: joe
+  timestamp: 2026-11-17T17:53:27.381931134Z
+  changes: []
 filed_at:
   code_sha: 8cb5cf4c28a7097ffb529766c0ff2b34a01aa01f
   branch: main
