@@ -9,6 +9,15 @@ feature: Uncategorized
 created_at: 2026-11-17T17:53:30.835923699Z
 modified_at: 2026-11-17T17:53:30.835923699Z
 req_type: Story
+relationships:
+- rel_type: Child
+  target_id: 01a1e0cf-f1b4-7453-be52-8aa9792405ca
+  created_at: 2026-11-17T17:53:31.453131013Z
+history:
+- id: 01a1eaa4-7f72-7c02-ac39-b3cef8d411cf
+  author: joe
+  timestamp: 2026-11-17T17:53:31.506127834Z
+  changes: []
 filed_at:
   code_sha: 8cb5cf4c28a7097ffb529766c0ff2b34a01aa01f
   branch: main
