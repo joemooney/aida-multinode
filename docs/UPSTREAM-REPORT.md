@@ -46,11 +46,18 @@ Command executed:
 | **S9** | Out-of-band push to `origin` only; verify `aida remote status` exits non-zero and `remote mirror-sync` levels `gitlab` | `PASS` | **`PASS`** | 7.7 s | `STORY-MN-003` |
 | **S10** | Node C sets `aida remote push-hubs gitlab`; verify pushes go exclusively to `gitlab` while `origin` diverges | `PASS` | **`PASS`** | 6.9 s | `STORY-MN-003` |
 | **S11** | Verify `aida remote reconcile` exits `2` on diverged hubs and `remote reconcile --execute` union-merges both hubs | `PASS` | **`PASS`** | 2.5 s | `STORY-MN-003` |
-| **Total** | **`--strict` exit status** | **2 FAIL, 3 WARN (exit 1)** | **12/12 PASS (exit 0)** | **107.7 s** | All resolved |
+| **S13** | Pure Codex agent mode (`--agent codex`, `CODEX_CI=1`, stripped `ANTIGRAVITY_*`/`CLAUDE_*` env) | `PASS` | **`PASS`** | 12.0 s | `STORY-MN-004` |
+| **S14** | Single-forge global ID block allocation (`[store.hubs]` + `aida db block claim` $\rightarrow$ `TASK-1`, `TASK-6`) | `PASS` | **`PASS`** | 12.8 s | `STORY-MN-003` |
+| **S15** | Multi-forge rooted ID pool delegation (`enroll-root` + `node hub add gitlab` $\rightarrow$ `TASK-11`) | `PASS` | **`PASS`** | 11.6 s | `STORY-MN-003` |
+| **S16** | Air-gapped clone node-local ID fallback (`TASK-<uuid>-001`) & online sync | `PASS` | **`PASS`** | 5.2 s | `STORY-MN-003` |
+| **S17** | Read-only clone (`main` & `aida-store` blocked) publishing feedback to `refs/heads/aida-feedback-<node>` & reading receipt | `PASS` | **`PASS`** | 7.4 s | `STORY-2652` |
+| **S18** | Producer own-branch foreign-write refusal (`STORY-2652` Ruling `R4` on `refs/heads/aida-feedback-<node>`) | `WARN` | **`PASS`** | 1.5 s | `BUG-MN-009` (`STORY-2652` R4) |
+| **S19** | Hourly inter-node heartbeat & allow-listed action channel (`PullCode`, `PullStore`, RO `PushStore` guard) | `PASS` | **`PASS`** | 2.5 s | `STORY-MN-004` |
+| **Total** | **`--strict` exit status** | **2 FAIL, 4 WARN (exit 1)** | **19/19 PASS (exit 0)** | **~160 s** | All resolved |
 
 ---
 
-## 3. Root-Cause Analysis & Fixes (`BUG-MN-001` – `BUG-MN-008`)
+## 3. Root-Cause Analysis & Fixes (`BUG-MN-001` – `BUG-MN-009`)
 
 ### `BUG-MN-001` (P0): `GIT_EDITOR=false` in caller environment breaks `git rebase --continue` during store auto-merge
 - **Symptom (S3):** When an agent harness, CI runner, or non-interactive shell exports `GIT_EDITOR=false` (to prevent interactive editor hangs), AIDA's automated conflict resolver resolves `oplog.yaml` and `objects/*.yaml`, stages them, and runs `git rebase --continue`. Because `git rebase --continue` spawns `$GIT_EDITOR` to confirm the commit message unless overridden, `GIT_EDITOR=false` causes `git rebase --continue` to fail with:
@@ -146,6 +153,14 @@ Command executed:
 
 ---
 
+### `BUG-MN-009` / `STORY-2652` Ruling `R4` (P1): `intent_intake::sync_branch` fast-forwards foreign writes on an enrolled writer's own feedback branch instead of refusing
+- **Symptom (S18):** In per-writer feedback mode (`Profile` version 2, `aida intent enroll --role producer --writer-id <id>`), each producer owns an exclusive branch `refs/heads/aida-feedback-<writer_id>` (and each processor owns `refs/heads/aida-feedback-receipts-<writer_id>`). Per `STORY-2652` Advisor Ruling `R4`, if the remote tip of a producer's **own** branch advances ahead of what that producer clone published (indicating a foreign or unauthorized write onto the producer's branch), `aida intent pull` / `aida intent publish` must refuse rather than fast-forwarding. Previously, `sync_branch` in [intent_intake.rs](file:///home/joe/ai/aida-multinode-fixes/aida-cli-lib/src/intent_intake.rs#L1142-L1168) treated the writer's own branch identically to peer branches and silently fast-forwarded `refs/heads/aida-feedback-<writer_id>` to `incoming`.
+- **Root Cause:** `Intake::sync_branch` checked `self.ancestor(old, &incoming)` and accepted any fast-forward even when `self.profile.version == 2 && branch == self.profile.branch()`.
+- **Fix:** Added the `STORY-2652` Ruling `R4` guard in [intent_intake.rs](file:///home/joe/ai/aida-multinode-fixes/aida-cli-lib/src/intent_intake.rs#L1159-L1167) before `update-ref`: when `self.profile.version == 2 && branch == self.profile.branch()`, any remote tip ahead of `old` (whether `old` is `None` or an ancestor of `incoming`) refuses with `"Foreign write detected on enrolled writer branch ..."`, leaving the accepted local branch untouched. Added regression test `per_writer_own_branch_foreign_write_refuses_r4` in [task_3096_intake_transport.rs](file:///home/joe/ai/aida-multinode-fixes/aida-cli/tests/task_3096_intake_transport.rs#L1788-L1812).
+- **Patch:** [0007-AI-antigravity-fix-intake-enforce-own-branch-foreign.patch](file:///home/joe/ai/aida-multinode/patches/0007-AI-antigravity-fix-intake-enforce-own-branch-foreign.patch)
+
+---
+
 ## 4. How to Apply the Patch Series to Upstream `aida`
 
 ### Option A: Apply the `git format-patch` series from `aida-multinode`
@@ -163,6 +178,7 @@ git am /home/joe/ai/aida-multinode/patches/*.patch
 | [0004-AI-antigravity-fix-edit-record-FieldChange-history-e.patch](file:///home/joe/ai/aida-multinode/patches/0004-AI-antigravity-fix-edit-record-FieldChange-history-e.patch) | `[AI:antigravity] fix(edit): record FieldChange history entries for scalar and tag edits (BUG-MN-004)` |
 | [0005-AI-antigravity-fix-init-gate-global-Codex-and-Antigr.patch](file:///home/joe/ai/aida-multinode/patches/0005-AI-antigravity-fix-init-gate-global-Codex-and-Antigr.patch) | `[AI:antigravity] fix(init): gate global Codex and Antigravity MCP registration on --with-mcp (BUG-MN-007)` |
 | [0006-AI-antigravity-fix-gitlab-surface-glab-api-JSON-erro.patch](file:///home/joe/ai/aida-multinode/patches/0006-AI-antigravity-fix-gitlab-surface-glab-api-JSON-erro.patch) | `[AI:antigravity] fix(gitlab): surface glab api JSON error_description on project creation failure (BUG-MN-008)` |
+| [0007-AI-antigravity-fix-intake-enforce-own-branch-foreign.patch](file:///home/joe/ai/aida-multinode/patches/0007-AI-antigravity-fix-intake-enforce-own-branch-foreign.patch) | `[AI:antigravity] fix(intake): enforce own-branch foreign-write refusal on producer feedback branch (BUG-MN-009 STORY-2652)` |
 
 ### Option B: Merge or cherry-pick directly from the local worktree branch
 The branch `fix/multinode-sync-bugs` is already present in the shared git object store of `/home/joe/ai/aida` (via the linked worktree at `/home/joe/ai/aida-multinode-fixes`):

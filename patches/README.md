@@ -1,17 +1,18 @@
 # Upstream AIDA Patch Series (`fix/multinode-sync-bugs`)
 
-This directory contains a 6-commit `git format-patch` series built and verified in the isolated worktree `/home/joe/ai/aida-multinode-fixes` (branch `fix/multinode-sync-bugs` off `/home/joe/ai/aida` `main`) that resolves `BUG-MN-001` through `BUG-MN-008`.
+This directory contains a 7-patch series built and verified in the isolated worktree `/home/joe/ai/aida-multinode-fixes` (branch `fix/multinode-sync-bugs` off `/home/joe/ai/aida` `main`) that resolves `BUG-MN-001` through `BUG-MN-009` (`BUG-2609`..`BUG-2615`, `STORY-2652` Ruling `R4`).
 
 ## Patch Inventory
 
 | Patch File | Spec ID(s) | Summary |
 |---|---|---|
-| `0001-AI-antigravity-fix-provenance-honor-AIDA_USER-in-def.patch` | `BUG-MN-006` | Honors `AIDA_USER` immediately after `AIDA_AUTHOR` in `aida_core::provenance::default_author()` so CLI and test environments using `AIDA_USER` attribute specs, comments, and history entries consistently. |
-| `0002-AI-antigravity-fix-sync-force-non-interactive-rebase.patch` | `BUG-MN-001`, `BUG-MN-002` | Passes `-c core.editor=true` + `GIT_EDITOR=true` + `GIT_SEQUENCE_EDITOR=true` on automated `git rebase --continue` in `git_ops.rs`; upgrades `merge_spec_upstream` in `conflict.rs` to 3-way merge all scalar fields (`merge_scalar(&base.field, &upstream.field, &local.field, true)`) and adds `overridden_scalar_fields` so `resolve_spec_conflict` reports `(conflict: upstream overrode local <fields>)` when upstream wins colliding scalar edits during `aida db sync --push`. |
-| `0003-AI-antigravity-fix-sync-refresh-cache-on-db-sync-pub.patch` | `BUG-MN-003`, `BUG-MN-005`, `BUG-MN-007` | Avoids false-positive `detect_store_conflicts` warnings on fast-forward `aida db sync --pull` (only running conflict detection when `StorePullOutcome::AutoMerged`), strips duplicate `auto-merged ` note prefixes, refreshes `cache.db` via `ensure_cache_fresh_with_schema_retry()` after `aida db sync`, publishes local `.aida/mailbox/` snapshots on `aida db sync --push`, and discovers known authors from `oplog.yaml` / `objects/` in `PeopleCatalogView::load` for work-node clones. |
-| `0004-AI-antigravity-fix-edit-record-FieldChange-history-e.patch` | `BUG-MN-004` | Records `FieldChange` history entries on `aida edit` for `title`, `description`, `priority`, `type`, `owner`, `feature`, `tags`, `add_tag`, and `remove_tag` (matching `status`), enabling audit trails and history-based conflict detection. |
-| `0005-AI-antigravity-fix-init-gate-global-Codex-and-Antigr.patch` | `BUG-MN-007` | Gates global `~/.codex/config.toml` and `~/.gemini/antigravity/mcp_config.json` MCP server registration in `aida init` behind `--with-mcp`. |
-| `0006-AI-antigravity-fix-gitlab-surface-glab-api-JSON-erro.patch` | `BUG-MN-008` | Parses JSON error payloads (`error_description`, `message`, `error`) from `glab api -X POST projects` in `gitlab_project_create.rs` and suggests `glab auth login --hostname <host>` instead of reporting only `glab api exited with status: 1`. |
+| `0001-AI-antigravity-fix-provenance-honor-AIDA_USER-in-def.patch` | `BUG-MN-006` (`BUG-2614`) | Honors `AIDA_USER` immediately after `AIDA_AUTHOR` in `aida_core::provenance::default_author()` so CLI and test environments using `AIDA_USER` attribute specs, comments, and history entries consistently. |
+| `0002-AI-antigravity-fix-sync-force-non-interactive-rebase.patch` | `BUG-MN-001` (`BUG-2609`), `BUG-MN-002` (`BUG-2613`) | Passes `-c core.editor=true` + `GIT_EDITOR=true` + `GIT_SEQUENCE_EDITOR=true` on automated `git rebase --continue` in `git_ops.rs`; upgrades `merge_spec_upstream` in `conflict.rs` to 3-way merge all scalar fields (`merge_scalar(&base.field, &upstream.field, &local.field, true)`) and adds `overridden_scalar_fields` so `resolve_spec_conflict` reports `(conflict: upstream overrode local <fields>)` when upstream wins colliding scalar edits during `aida db sync --push`. |
+| `0003-AI-antigravity-fix-sync-refresh-cache-on-db-sync-pub.patch` | `BUG-MN-003` (`BUG-2609`), `BUG-MN-005` (`BUG-2609`), `BUG-MN-007` (`BUG-2615`) | Avoids false-positive `detect_store_conflicts` warnings on fast-forward `aida db sync --pull` (only running conflict detection when `StorePullOutcome::AutoMerged`), strips duplicate `auto-merged ` note prefixes, refreshes `cache.db` via `ensure_cache_fresh_with_schema_retry()` after `aida db sync`, publishes local `.aida/mailbox/` snapshots on `aida db sync --push`, and discovers known authors from `oplog.yaml` / `objects/` in `PeopleCatalogView::load` for work-node clones. |
+| `0004-AI-antigravity-fix-edit-record-FieldChange-history-e.patch` | `BUG-MN-004` (`BUG-2610`) | Records `FieldChange` history entries on `aida edit` for `title`, `description`, `priority`, `type`, `owner`, `feature`, `tags`, `add_tag`, and `remove_tag` (matching `status`), enabling audit trails and history-based conflict detection. |
+| `0005-AI-antigravity-fix-init-gate-global-Codex-and-Antigr.patch` | `BUG-MN-007` (`BUG-2611`) | Gates global `~/.codex/config.toml` and `~/.gemini/antigravity/mcp_config.json` MCP server registration in `aida init` behind `--with-mcp`. |
+| `0006-AI-antigravity-fix-gitlab-surface-glab-api-JSON-erro.patch` | `BUG-MN-008` (`BUG-2612`) | Parses JSON error payloads (`error_description`, `message`, `error`) from `glab api -X POST projects` in `gitlab_project_create.rs` and suggests `glab auth login --hostname <host>` instead of reporting only `glab api exited with status: 1`. |
+| `0007-AI-antigravity-fix-intake-enforce-own-branch-foreign.patch` | `BUG-MN-009` (`STORY-2652` R4) | Enforces `STORY-2652` Ruling `R4` in `aida-cli-lib/src/intent_intake.rs::sync_branch`: when an enrolled v2 writer's own per-node branch (`refs/heads/aida-feedback-<writer>`) has a remote tip ahead of what that clone published, `intent pull` and `intent publish` refuse instead of fast-forwarding. |
 
 ## Applying the Series to Upstream `aida`
 
@@ -43,4 +44,11 @@ git am /path/to/aida-multinode/patches/*.patch
 | `S9 (Drift + mirror-sync)` | `PASS` | `PASS` | `remote status` caught drift; `mirror-sync` leveled `gitlab` |
 | `S10 (push-hubs gitlab on C)` | `PASS` | `PASS` | Node C pushed only to `gitlab`; hubs diverged as expected |
 | `S11 (remote reconcile)` | `PASS` | `PASS` | Diverged `origin` & `gitlab` union-merged |
-| **Total (`--strict`)** | **2 FAIL, 3 WARN** (exit `1`) | **12/12 PASS, 0 FAIL, 0 WARN** (exit `0`) | All unit tests in `aida-core` & `aida-cli-lib` pass |
+| `S13 (Codex-only agent mode)` | `PASS` | `PASS` | `AGENTS.md` (no `CLAUDE.md`) + `CODEX_CI=1` provenance & sync verified |
+| `S14 (Single-forge global ID)` | `PASS` | `PASS` | Nodes dispensed global agreed IDs (`TASK-1`, `TASK-6`) |
+| `S15 (Multi-forge pool ID)` | `PASS` | `PASS` | GitLab clone dispensed delegated global ID (`TASK-11`) |
+| `S16 (Air-gapped ID fallback)` | `PASS` | `PASS` | Air-gapped node issued node-local `TASK-<uuid>-001` and synced |
+| `S17 (RO feedback branch)` | `PASS` | `PASS` | `main`/`store` blocked; feedback published & receipt verified on RO clone |
+| `S18 (RO branch foreign-write)` | `WARN` (`BUG-MN-009`) | `PASS` | Producer refused foreign write on its own feedback branch (`STORY-2652` R4) |
+| `S19 (Hourly heartbeat/action)` | `PASS` | `PASS` | Allow-listed `PullCode`/`PullStore` synced; RO `PushStore` refused |
+| **Total (`--strict`)** | **2 FAIL, 4 WARN** (exit `1`) | **19/19 PASS, 0 FAIL, 0 WARN** (exit `0`) | All unit tests in `aida-core`, `aida-cli-lib`, and `aida-cli` pass |

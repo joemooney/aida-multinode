@@ -1,6 +1,6 @@
 # AIDA Multi-Node & Multi-Hub Test Scenario Catalog
 
-// trace:EPIC-MN-001 trace:STORY-MN-001 trace:STORY-MN-003 | ai:antigravity
+// trace:EPIC-MN-001 trace:STORY-MN-001 trace:STORY-MN-003 trace:STORY-MN-004 trace:BUG-MN-009 | ai:antigravity
 
 This document is the canonical catalog of all multi-node and multi-hub (GitHub + GitLab) synchronization test scenarios covered in `aida-multinode`.
 
@@ -28,6 +28,13 @@ Every scenario below is automated in:
 | **S10** | Restricted work-clone routing (`aida remote push-hubs gitlab`) | Multi-Hub (GitLab) | `node-c` $\rightarrow$ `gitlab.git` only | `STORY-MN-003` | `S10` | — |
 | **S11** | Diverged multi-hub CRDT union-merge (`aida remote reconcile --execute`) | Multi-Hub (GitLab) | `origin` (`hub.git`) $\neq$ `gitlab` (`gitlab.git`) | `STORY-MN-003` | `S11` | `story_mn_003_*` |
 | **S12** | GitLab SSH push-to-create vs `ls-remote` probe & expired `glab` token error reporting | Multi-Hub (GitLab) | `gitlab.joemooney.com` / API parser | `BUG-MN-008` | `S8` | `bug_mn_008_*` |
+| **S13** | Codex-only agent mode (`aida init --agent codex`, `CODEX_CI=1`, stripped `ANTIGRAVITY_*`/`CLAUDE_*` env) | Agent Isolation | `codex-hub.git` + `codex-seed` + `codex-a` + `codex-b` | `STORY-MN-004` | `S13` | — |
+| **S14** | Single-forge global/agreed ID block allocation (`[store.hubs]` + `aida db block claim`) | Global ID Allocation | `codex-a` & `codex-b` $\rightarrow$ `codex-hub.git` | `STORY-MN-003` | `S14` | `s14_s16_*` |
+| **S15** | Multi-forge rooted ID pool delegation (`aida node enroll-root` + `aida node hub add gitlab`) | Global ID Allocation | `codex-a` (root) $\rightarrow$ `codex-gitlab.git` $\leftarrow$ `codex-c` | `STORY-MN-003` | `S15` | `s14_s16_*` |
+| **S16** | Air-gapped clone node-local ID fallback & online convergence | Air-Gapped ID Allocation | `codex-airgap` (offline $\rightarrow$ online) | `STORY-MN-003` | `S16` | `s14_s16_*` |
+| **S17** | Read-only clone (`main` & `aida-store` push-blocked) publishing to `refs/heads/aida-feedback-<node-id>` | Read-Only Feedback | `node-ro` $\rightarrow$ `hub.git` $\leftrightarrow$ `node-a` | `STORY-2652` | `S17` | `s17_s18_*` |
+| **S18** | Producer own-branch foreign-write refusal (`STORY-2652` Ruling `R4` / `BUG-MN-009`) | Read-Only Feedback | `foreign` $\rightarrow$ `refs/heads/aida-feedback-<ro>` $\leftarrow$ `node-ro` | `BUG-MN-009`, `STORY-2652` | `S18` | `s17_s18_*` |
+| **S19** | Hourly inter-node heartbeat & allow-listed action channel (`PullCode`, `PullStore`, `PushStore` guard) | Heartbeat & Actions | `node-a` $\rightarrow$ `hub.git` $\rightarrow$ `node-ro` | `STORY-MN-004` | `S19` | `s19_*` |
 
 ---
 
@@ -185,3 +192,88 @@ Every scenario below is automated in:
 - **Goal:** Ensure `aida remote mirror` works seamlessly with GitLab SSH push-to-create and surfaces clear API errors when `glab` tokens expire (`BUG-MN-008`).
 - **Expected Invariants:**
   - When `glab api` returns `{"error":"invalid_token","error_description":"Token is expired..."}`, the parser surfaces `"Token is expired..."` instead of `"could not read the id of GitLab namespace"` (`bug_mn_008_gitlab_namespace_parser_surfaces_expired_token_error`).
+
+---
+
+### Scenario S13: Codex-Only Agent Mode (`--agent codex`, `CODEX_CI=1`)
+- **Goal:** Verify that AIDA initializes, files specs, records provenance, and syncs across nodes in a pure Codex environment (`env -i` with `CODEX_CI=1` and zero `ANTIGRAVITY_*` or `CLAUDE_*` environment variables).
+- **Steps:**
+  1. Run `aida init --agent codex --no-hooks --no-post-hooks` inside `$T/codex-seed` under `env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1`.
+  2. Push `main` and `aida-store` to `$T/codex-hub.git`, clone `$T/codex-a` and `$T/codex-b`, acquire node bindings, set alias `CXA`, file `TASK-CXA-001` on `codex-a`, comment from `codex-b`, and sync back to `codex-a`.
+- **Expected Invariants:**
+  - `AGENTS.md`, `.codex/`, and `.agents/` are scaffolded while `CLAUDE.md` and `.claude/` are omitted.
+  - Filing provenance records `· codex` (`Filed at: <sha> (main) · aida ... · codex`).
+  - Cross-node `db sync --push` / `--pull` and `show --comments` round-trip cleanly under `CODEX_CI=1`.
+
+---
+
+### Scenario S14: Single-Forge Global / Agreed Spec ID Block Allocation
+- **Goal:** Verify that two non-root work nodes (`codex-a`, `codex-b`) sharing a single declared hub (`[store.hubs] primary = ...`) can claim non-overlapping global ID blocks via CAS push (`ClaimAuthority::HubCas`) and dispense global agreed IDs (`TASK-1`, `TASK-6`) at `aida add` time without a merge gate.
+- **Steps:**
+  1. Configure `[ids] counter_scope = "per-type"`, `format = "agreed-then-node-aware"`, and `[store.hubs] primary = { urls = ["$T/codex-hub.git"] }` in `.aida/config.toml`; commit and push to `origin/main`.
+  2. On `codex-a`: run `aida node upstream origin`, `aida db block claim --type TASK --size 5`, `aida add --type task`, and `aida db sync --push`.
+  3. On `codex-b`: pull `main` and `aida-store`, run `aida node upstream origin`, `aida db block claim --type TASK --size 5`, `aida add --type task`, and `aida db sync --push`.
+- **Expected Invariants:**
+  - `codex-a` claims `TASK 1..=5` (`pool_id: hub:primary:TASK`) and dispenses `agreed_id: TASK-1` alongside its node-local `spec_id`.
+  - `codex-b` claims `TASK 6..=10` (`pool_id: hub:primary:TASK`) and dispenses `agreed_id: TASK-6`.
+
+---
+
+### Scenario S15: Multi-Forge Rooted ID Pool Delegation (`enroll-root` + `node hub add gitlab`)
+- **Goal:** Verify that when a second forge (`gitlab`) is added, enrolling an allocation root (`aida node enroll-root`) and delegating a child ID pool (`aida node hub add gitlab --url ... --size 100`) enables clones of `gitlab` (`codex-c`) to claim blocks inside the delegated pool (`ClaimAuthority::Delegated`) and dispense global agreed IDs (`TASK-11`) that cannot collide with `origin`.
+- **Steps:**
+  1. On `codex-a`, clear upstream, run `aida node enroll-root`, and run `aida node hub add gitlab --url "$T/codex-gitlab.git" --size 100`.
+  2. Commit `.aida/config.toml` and push `main` and `aida-store` to both `origin` and `gitlab`.
+  3. Clone `$T/codex-gitlab.git` into `$T/codex-c`, run `aida node acquire`, `aida node upstream origin`, `aida db block claim --type TASK --size 5`, `aida add --type task`, and `aida db sync --push`.
+- **Expected Invariants:**
+  - `registry/root.yaml` records `codex-a` as the root and `registry/pools.yaml` records `hub:gitlab:TASK` (`11..=110`) under parent `hub:primary:TASK`.
+  - `codex-c` carves `TASK 11..=15` from `hub:gitlab:TASK` and dispenses `agreed_id: TASK-11`.
+
+---
+
+### Scenario S16: Air-Gapped Clone Node-Local ID Fallback & Online Convergence
+- **Goal:** Verify that when a clone (`codex-airgap`) is completely disconnected from all hubs and holds no global ID block, `aida add` gracefully falls back to node-local IDs (`TASK-<node-uuid>-001`, `agreed_id: null`) and later syncs cleanly once connectivity returns.
+- **Steps:**
+  1. Clone `$T/codex-hub.git` into `$T/codex-airgap` and run `aida node acquire` (without claiming any block).
+  2. Make `$T/codex-hub.git` unreachable (`mv`), run `aida add --type task --title "S16 Airgapped Task"`, restore `$T/codex-hub.git`, and run `aida db sync --push`.
+- **Expected Invariants:**
+  - `aida add` succeeds while air-gapped, issuing `TASK-<32-hex-node-id>-001` with `agreed_id: null`.
+  - Subsequent `aida db sync --push` publishes the spec to the hub with zero collisions.
+
+---
+
+### Scenario S17: Read-Only Clone + Per-Node Feedback Branch (`aida intent` / `STORY-2652`)
+- **Goal:** Verify that a read-only clone (`node-ro`), forbidden by a server `pre-receive` hook from pushing to `refs/heads/main` or `refs/heads/aida-store`, can still submit structured observations, questions, and requests via its exclusive `refs/heads/aida-feedback-<node-id>` branch and receive processing receipts on `refs/heads/aida-feedback-receipts-<processor-id>`.
+- **Steps:**
+  1. Install a `pre-receive` hook on `$T/hub.git` that denies all pushes when `AIDA_READONLY_CLONE=1` unless `$refname == refs/heads/aida-feedback-$RO_WRITER`.
+  2. Confirm that `git push origin main` and `git -C .aida-store push origin aida-store` from `node-ro` fail with non-zero exit codes.
+  3. On `node-ro`: enroll as `producer` (`aida intent enroll --role producer --writer-id $RO_WRITER --receipt-writer $HOME_PROC --reviewed`), create an observation note (`aida intent note`), and publish (`aida intent publish --file ... --reviewed`).
+  4. On `node-a`: enroll as `processor` (`--role processor --writer-id $HOME_PROC --producer-id $RO_WRITER --reviewed`), run `aida intent pull`, and process the observation into a new spec (`aida intent process <checksum> --action create`).
+  5. On `node-ro`: run `aida intent pull` and `aida intent list --all --json`.
+- **Expected Invariants:**
+  - `main` and `aida-store` pushes from `node-ro` are rejected by the server hook.
+  - `node-ro` publishes exclusively to `refs/heads/aida-feedback-$RO_WRITER`.
+  - `node-a` creates the spec in `aida-store`, publishes the receipt to `refs/heads/aida-feedback-receipts-$HOME_PROC`, and `node-ro` sees `"state":"processed"` on `aida intent list --all --json`.
+
+---
+
+### Scenario S18: Producer Own-Branch Foreign-Write Refusal (`STORY-2652` Ruling `R4` / `BUG-MN-009`)
+- **Goal:** Verify `STORY-2652` Advisor Ruling `R4`: if a foreign writer pushes a commit onto a producer's own `refs/heads/aida-feedback-<writer>` branch (advancing the remote tip ahead of what the producer clone itself published), the producer's `aida intent pull` and `aida intent publish` must **refuse** rather than silently fast-forwarding the foreign commit into its accepted local branch.
+- **Steps:**
+  1. Clone `refs/heads/aida-feedback-$RO_WRITER` into `$T/foreign-intake`, add a valid observation envelope with `AIDA Intake <intake@invalid>` commit metadata, and push directly to `refs/heads/aida-feedback-$RO_WRITER` on `$T/hub.git`.
+  2. On `node-ro` (the legitimate owner of `$RO_WRITER`), run `aida intent pull`.
+- **Expected Invariants:**
+  - `aida intent pull` exits non-zero with `"Foreign write detected on enrolled writer branch ..."` and leaves `node-ro`'s accepted local branch unchanged (`BUG-MN-009`).
+
+---
+
+### Scenario S19: Hourly Inter-Node Heartbeat & Allow-Listed Action Channel
+- **Goal:** Verify that nodes can exchange periodic liveness/state heartbeats (`code_head_sha`, `store_head_sha`, `executed_directives`) and execute directed or broadcast maintenance actions from a closed allow-list (`PullCode`, `PullStore`, `PushStore`, `PullFeedback`, `PublishFeedback`, `ReportStatus`) idempotently, while read-only clones automatically refuse store-mutating directives (`PushStore`).
+- **Steps:**
+  1. `node-a` commits and pushes a code update on `main` to `$T/hub.git`.
+  2. `node-ro` executes its allow-listed hourly tick actions (`aida pull --code-only` and `aida db sync --pull`), advancing its `HEAD` to match `origin/main`.
+  3. Run `s19_hourly_heartbeat_executes_allowlisted_actions_idempotently` in `crates/aida-store-sync` to verify allow-list dispatch, `refused:read-only-clone` on `PushStore`, and second-tick idempotency via `DirectiveReceipt`.
+- **Expected Invariants:**
+  - Only closed `NodeAction` enum variants map to CLI arguments; arbitrary shell strings cannot be represented.
+  - Read-only clones execute `PullCode` / `PullStore` / `PullFeedback` and record `refused:read-only-clone` for `PushStore`.
+  - Re-evaluating the same inbox on subsequent hourly ticks is a strict no-op.

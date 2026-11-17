@@ -1032,7 +1032,7 @@ pub struct FeedbackReceipt {
 /// - On the producer's own branch, if `remote_tip` is not equal to `last_published_tip`
 ///   (e.g., a foreign writer advanced the producer's branch), sync refuses instead
 ///   of fast-forwarding (`BUG-MN-009` / `STORY-2652` R4).
-// trace:STORY-MN-003 | ai:antigravity
+// trace:BUG-MN-009 trace:STORY-MN-003 trace:STORY-MN-004 | ai:antigravity
 pub fn validate_readonly_feedback_push_and_sync(
     producer_node_id: &str,
     target_ref: &str,
@@ -1129,7 +1129,7 @@ pub struct NodeHeartbeat {
 ///   `PublishFeedback`, and `ReportStatus`.
 /// - Returns the ordered list of `(NodeDirective, &'static [&'static str])` CLI
 ///   invocations to run and the updated `NodeHeartbeat` with idempotent receipts.
-// trace:STORY-MN-003 | ai:antigravity
+// trace:STORY-MN-004 | ai:antigravity
 pub fn evaluate_hourly_node_tick(
     node_id: &str,
     is_readonly_clone: bool,

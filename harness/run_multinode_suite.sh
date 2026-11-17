@@ -455,10 +455,10 @@ env -i PATH="$PATH" HOME="$T/home-codex-b" git clone "$T/codex-hub.git" "$T/code
   cd "$T/codex-a"
   env -i PATH="$PATH" HOME="$T/home-codex-a" USER=codex-a AIDA_USER=codex-a CODEX_CI=1 "$AIDA_BIN" db sync --pull < /dev/null >/dev/null 2>&1
 )
-S13_OUT=$(cd "$T/codex-a" && env -i PATH="$PATH" HOME="$T/home-codex-a" USER=codex-a AIDA_USER=codex-a CODEX_CI=1 "$AIDA_BIN" show TASK-CXA-001 < /dev/null 2>/dev/null || true)
+S13_OUT=$(cd "$T/codex-a" && env -i PATH="$PATH" HOME="$T/home-codex-a" USER=codex-a AIDA_USER=codex-a CODEX_CI=1 "$AIDA_BIN" show TASK-CXA-001 --comments < /dev/null 2>/dev/null || true)
 t1=$(now_ms)
-if [[ -f "$T/codex-seed/AGENTS.md" ]] && grep -q "Reviewed by codex-b" <<<"$S13_OUT"; then
-  record_result "S13 (Codex-only agent mode)" "PASS" "$((t1 - t0))" "AGENTS.md scaffolded; pure CODEX_CI=1 sync succeeded"
+if [[ -f "$T/codex-seed/AGENTS.md" && ! -f "$T/codex-seed/CLAUDE.md" ]] && grep -q "codex" <<<"$S13_OUT" && grep -q "Reviewed by codex-b" <<<"$S13_OUT"; then
+  record_result "S13 (Codex-only agent mode)" "PASS" "$((t1 - t0))" "AGENTS.md (no CLAUDE.md) + CODEX_CI=1 provenance & sync verified"
 else
   record_result "S13 (Codex-only agent mode)" "FAIL" "$((t1 - t0))" "Codex-only init or sync failed"
 fi
@@ -699,14 +699,30 @@ else
   record_result "S18 (RO branch foreign-write)" "WARN" "$((t1 - t0))" "BUG-MN-009: Producer fast-forwarded foreign write on its own branch (STORY-2652 R4)"
 fi
 
-# --- S19: Hourly inter-node heartbeat & allow-listed action channel (crates/aida-store-sync) ---
+# --- S19: Hourly inter-node heartbeat & allow-listed action channel (CLI + crates/aida-store-sync) ---
 t0=$(now_ms)
-if cargo test --manifest-path /home/joe/ai/aida-multinode/Cargo.toml --quiet s19_hourly_heartbeat_executes_allowlisted_actions_idempotently >/dev/null 2>&1; then
+(
+  unset GIT_EDITOR
+  cd "$T/node-a"
+  echo "// s19 hourly tick code update" >> src/lib.rs
+  HOME="$T/home-a" git add src/lib.rs
+  HOME="$T/home-a" git commit -m "chore: s19 code update" >/dev/null 2>&1
+  HOME="$T/home-a" git push origin main >/dev/null 2>&1
+)
+S19_EXPECTED_CODE_SHA=$(git -C "$T/hub.git" rev-parse refs/heads/main)
+(
+  unset GIT_EDITOR
+  cd "$T/node-ro"
+  AIDA_READONLY_CLONE=1 HOME="$T/home-ro" AIDA_USER=node-ro "$AIDA_BIN" pull --code-only < /dev/null >/dev/null 2>&1
+  AIDA_READONLY_CLONE=1 HOME="$T/home-ro" AIDA_USER=node-ro "$AIDA_BIN" db sync --pull < /dev/null >/dev/null 2>&1
+)
+S19_RO_CODE_SHA=$(git -C "$T/node-ro" rev-parse HEAD)
+if [[ "$S19_RO_CODE_SHA" == "$S19_EXPECTED_CODE_SHA" ]] && cargo test --manifest-path /home/joe/ai/aida-multinode/Cargo.toml --quiet s19_hourly_heartbeat_executes_allowlisted_actions_idempotently >/dev/null 2>&1; then
   t1=$(now_ms)
-  record_result "S19 (Hourly heartbeat/action)" "PASS" "$((t1 - t0))" "Allow-listed directives executed idempotently; RO PushStore refused"
+  record_result "S19 (Hourly heartbeat/action)" "PASS" "$((t1 - t0))" "Allow-listed PullCode/PullStore synced (${S19_RO_CODE_SHA:0:10}); RO PushStore refused"
 else
   t1=$(now_ms)
-  record_result "S19 (Hourly heartbeat/action)" "FAIL" "$((t1 - t0))" "Heartbeat/action channel test failed"
+  record_result "S19 (Hourly heartbeat/action)" "FAIL" "$((t1 - t0))" "ro_code=$S19_RO_CODE_SHA expected=$S19_EXPECTED_CODE_SHA"
 fi
 
 echo "========================================================================"

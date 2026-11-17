@@ -11,8 +11,8 @@
 ## 1. Repository Layout & Key Artifacts
 
 - **[REPORT.md](file:///home/joe/ai/aida-multinode/REPORT.md):** Initial multi-node sync audit report (`Setup` + `S1`–`S7`) and root-cause analysis for `BUG-MN-001`..`BUG-MN-007`.
-- **[docs/UPSTREAM-REPORT.md](file:///home/joe/ai/aida-multinode/docs/UPSTREAM-REPORT.md):** Shareable upstream engineering report covering `BUG-MN-001`..`BUG-MN-008`, before/after verification (`12/12 PASS`), and patch instructions.
-- **[docs/TEST-SCENARIOS.md](file:///home/joe/ai/aida-multinode/docs/TEST-SCENARIOS.md):** Detailed specification of automated test scenarios (`Setup` + `S1`–`S12`).
+- **[docs/UPSTREAM-REPORT.md](file:///home/joe/ai/aida-multinode/docs/UPSTREAM-REPORT.md):** Shareable upstream engineering report covering `BUG-MN-001`..`BUG-MN-009`, before/after verification (`19/19 PASS` under `--strict`), and patch instructions.
+- **[docs/TEST-SCENARIOS.md](file:///home/joe/ai/aida-multinode/docs/TEST-SCENARIOS.md):** Detailed specification of automated test scenarios (`Setup` + `S1`–`S19`).
 - **[harness/run_multinode_suite.sh](file:///home/joe/ai/aida-multinode/harness/run_multinode_suite.sh):** Self-contained, repeatable multi-node + multi-hub bash test harness. Now includes:
   - `Setup` + `S1`–`S7`: Core multi-node sync, conflict resolution, offline ID allocation, cache freshness, and mailbox.
   - `S8`–`S11`: Multi-hub GitLab mirror fan-out, drift detection (`remote status`), `remote mirror-sync`, `remote push-hubs gitlab`, and `remote reconcile --execute`.
@@ -36,11 +36,12 @@
     - `BUG-2610` ← `BUG-MN-004` (`FieldChange` history entries on `aida edit`).
     - `BUG-2611` ← `BUG-MN-007` part 3 (`aida init --with-mcp` gating for Codex/Antigravity).
     - `BUG-2612` ← `BUG-MN-008` (`gitlab_project_create.rs` JSON `error_description` + `glab auth login` hint).
+    - `STORY-2652` Ruling `R4` ← `BUG-MN-009` (`intent_intake.rs::sync_branch` own-branch foreign-write refusal on `refs/heads/aida-feedback-<writer>`).
   - **Held for advisor ruling (keep on separate branches out of `main`):**
     - `BUG-2613` ← `BUG-MN-002` (`merge_spec_upstream` 3-way scalar merge & override reporting).
     - `BUG-2614` ← `BUG-MN-006` (`AIDA_USER` in `default_author()`).
     - `BUG-2615` ← `BUG-MN-007` parts 1 & 2 (mailbox recipient discovery from `oplog`/`objects` + mailbox publish on `db sync --push`).
-  - Trace comments (`// trace:BUG-2609 | ai:antigravity` .. `// trace:BUG-2615 | ai:antigravity`) and regression unit tests are already in the working tree of `/home/joe/ai/aida-multinode-fixes`.
+  - Trace comments (`// trace:BUG-2609 | ai:antigravity` .. `// trace:BUG-2615 | ai:antigravity`, `// trace:STORY-2652 | ai:antigravity`) and regression unit tests are committed in `/home/joe/ai/aida-multinode-fixes` and exported in `patches/`.
 
 ---
 

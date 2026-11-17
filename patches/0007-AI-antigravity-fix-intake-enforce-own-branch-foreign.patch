@@ -1,0 +1,59 @@
+diff --git a/aida-cli-lib/src/intent_intake.rs b/aida-cli-lib/src/intent_intake.rs
+index 3a9bb70c3c6..d6a5bc6cbd6 100644
+--- a/aida-cli-lib/src/intent_intake.rs
++++ b/aida-cli-lib/src/intent_intake.rs
+@@ -1156,6 +1156,16 @@ impl Intake {
+                 bail!("Intake diverged; accepted local branch unchanged. Remote history was rewritten outside AIDA (a force push); review both histories with an advisor. Never force-push");
+             }
+         }
++        // trace:STORY-2652 | ai:antigravity
++        // Ruling R4 (own-branch foreign-write rule): on the enrolled writer's own
++        // per-writer branch, a remote tip ahead of what this clone published refuses
++        // instead of fast-forwarding.
++        if self.profile.version == 2 && branch == self.profile.branch() {
++            bail!(
++                "Foreign write detected on enrolled writer branch {branch}; remote tip {incoming} is ahead of local published tip {}; accepted local branch unchanged",
++                old.as_deref().unwrap_or("none")
++            );
++        }
+         git(
+             &self.worktree,
+             &[
+diff --git a/aida-cli/tests/task_3096_intake_transport.rs b/aida-cli/tests/task_3096_intake_transport.rs
+index 1ed9773bd20..4d72467d136 100644
+--- a/aida-cli/tests/task_3096_intake_transport.rs
++++ b/aida-cli/tests/task_3096_intake_transport.rs
+@@ -1785,6 +1785,33 @@ fn per_writer_foreign_paths_refuse_and_standalone_receipts_are_readable() {
+     );
+ }
+ 
++// trace:STORY-2652 | ai:antigravity
++#[test]
++fn per_writer_own_branch_foreign_write_refuses_r4() {
++    let temp = tempfile::tempdir().unwrap();
++    let remote = remote(&temp);
++    let work = Fixture::new();
++    let foreign = Fixture::new();
++    good(&enroll_writer(&work, &remote, false));
++    good(&enroll_writer(&foreign, &remote, false));
++
++    // Foreign clone (or unauthorized writer) publishes to producer's own branch first.
++    let _foreign_cs = foreign.note("Foreign observation on producer branch");
++    good(&foreign.publish());
++
++    // Producer's own branch now has a remote tip ahead of what `work` published (`none`):
++    // `intent pull` and `intent publish` on `work` must refuse rather than fast-forward.
++    bad(
++        &work.run(&["intent", "pull"]),
++        "Foreign write detected on enrolled writer branch",
++    );
++    let _work_cs = work.note("Legitimate observation");
++    bad(
++        &work.publish(),
++        "Foreign write detected on enrolled writer branch",
++    );
++}
++
+ // trace:STORY-2493 | ai:codex
+ fn review_return(f: &Fixture, kind: &str, payload: Value) -> String {
+     fs::write(
