@@ -1,0 +1,21 @@
+id: 01a1eaa4-7cd3-7db3-b02f-143c59375b4f
+spec_id: STORY-d530fb089bc1489a800b2058e5cccc62-004
+title: Expand multi-node test suite and aida-store-sync crate to cover Codex-only agent mode, global/delegated/air-gapped ID allocation, read-only feedback branches, and hourly heartbeat actions (S13-S19)
+description: Added S13-S19 to harness/run_multinode_suite.sh, Sections 6-8 + unit tests to crates/aida-store-sync/src/lib.rs, and scenario specifications to docs/TEST-SCENARIOS.md.
+status: Draft
+priority: Medium
+owner: ''
+feature: Uncategorized
+created_at: 2026-11-17T17:53:30.835923699Z
+modified_at: 2026-11-17T17:53:30.835923699Z
+req_type: Story
+filed_at:
+  code_sha: 8cb5cf4c28a7097ffb529766c0ff2b34a01aa01f
+  branch: main
+  dirty: true
+  aida_version: 0.16.0
+  aida_build_sha: 6146f23bada
+  vendor: antigravity
+implementation_info:
+  implemented: false
+  completed_at: 2026-11-17T17:53:30.835955091Z

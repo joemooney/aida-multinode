@@ -207,5 +207,17 @@ operations:
     req_type: Bug
     status: Draft
     priority: Medium
-clock: 13
+- id: 01a1eaa4-7d44-7843-bbe1-402444def81c
+  target_id: 01a1eaa4-7cd3-7db3-b02f-143c59375b4f
+  author: joe
+  node_id: ''
+  lamport: 14
+  timestamp: 2026-11-17T17:53:30.948037128Z
+  kind: !Create
+    title: Expand multi-node test suite and aida-store-sync crate to cover Codex-only agent mode, global/delegated/air-gapped ID allocation, read-only feedback branches, and hourly heartbeat actions (S13-S19)
+    description: Added S13-S19 to harness/run_multinode_suite.sh, Sections 6-8 + unit tests to crates/aida-store-sync/src/lib.rs, and scenario specifications to docs/TEST-SCENARIOS.md.
+    req_type: Story
+    status: Draft
+    priority: Medium
+clock: 14
 node_id: ''
