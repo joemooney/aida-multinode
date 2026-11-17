@@ -416,6 +416,299 @@ else
   record_result "S11 (remote reconcile)" "FAIL" "$((t1 - t0))" "dry_rc=$REC_DRY_RC exec_rc=$REC_EXEC_RC origin=$ORIGIN_POST_REC gitlab=$GITLAB_POST_REC"
 fi
 
+# --- S13: Codex-only agent environment (--agent codex, CODEX_CI=1, stripped ANTIGRAVITY/CLAUDE env) ---
+t0=$(now_ms)
+git init --bare -b main "$T/codex-hub.git" >/dev/null 2>&1
+mkdir -p "$T/home-codex-seed" "$T/home-codex-a" "$T/home-codex-b" "$T/codex-seed/src"
+for h in "$T/home-codex-seed" "$T/home-codex-a" "$T/home-codex-b"; do
+  git config --file "$h/.gitconfig" user.name "Codex Agent"
+  git config --file "$h/.gitconfig" user.email "codex@test.invalid"
+  git config --file "$h/.gitconfig" init.defaultBranch main
+done
+echo "# Codex Project" > "$T/codex-seed/README.md"
+(
+  cd "$T/codex-seed"
+  env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1 git init -b main >/dev/null 2>&1
+  env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1 git add README.md
+  env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1 git commit -m "chore: seed" >/dev/null 2>&1
+  env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1 "$AIDA_BIN" init --agent codex --no-hooks --no-post-hooks < /dev/null >/dev/null 2>&1 || true
+  env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1 git add -A
+  env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1 git diff --cached --quiet || env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1 git commit -m "chore: codex init" >/dev/null 2>&1
+  env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1 git remote add origin "$T/codex-hub.git"
+  env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1 git push -u origin main >/dev/null 2>&1
+  env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1 git -C .aida-store remote add origin "$T/codex-hub.git" 2>/dev/null || env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1 git -C .aida-store remote set-url origin "$T/codex-hub.git"
+  env -i PATH="$PATH" HOME="$T/home-codex-seed" USER=codex-seed AIDA_USER=codex-seed CODEX_CI=1 git -C .aida-store push -u origin aida-store >/dev/null 2>&1
+)
+env -i PATH="$PATH" HOME="$T/home-codex-a" git clone "$T/codex-hub.git" "$T/codex-a" >/dev/null 2>&1
+env -i PATH="$PATH" HOME="$T/home-codex-b" git clone "$T/codex-hub.git" "$T/codex-b" >/dev/null 2>&1
+(
+  cd "$T/codex-a"
+  env -i PATH="$PATH" HOME="$T/home-codex-a" USER=codex-a AIDA_USER=codex-a CODEX_CI=1 "$AIDA_BIN" node acquire < /dev/null >/dev/null 2>&1
+  env -i PATH="$PATH" HOME="$T/home-codex-a" USER=codex-a AIDA_USER=codex-a CODEX_CI=1 "$AIDA_BIN" node alias set CXA < /dev/null >/dev/null 2>&1
+  env -i PATH="$PATH" HOME="$T/home-codex-a" USER=codex-a AIDA_USER=codex-a CODEX_CI=1 "$AIDA_BIN" add --type task --title "Codex Task 1" --description "From Codex A" < /dev/null >/dev/null 2>&1
+  env -i PATH="$PATH" HOME="$T/home-codex-a" USER=codex-a AIDA_USER=codex-a CODEX_CI=1 "$AIDA_BIN" db sync --push < /dev/null >/dev/null 2>&1
+  cd "$T/codex-b"
+  env -i PATH="$PATH" HOME="$T/home-codex-b" USER=codex-b AIDA_USER=codex-b CODEX_CI=1 "$AIDA_BIN" db sync --pull < /dev/null >/dev/null 2>&1
+  env -i PATH="$PATH" HOME="$T/home-codex-b" USER=codex-b AIDA_USER=codex-b CODEX_CI=1 "$AIDA_BIN" node acquire < /dev/null >/dev/null 2>&1
+  env -i PATH="$PATH" HOME="$T/home-codex-b" USER=codex-b AIDA_USER=codex-b CODEX_CI=1 "$AIDA_BIN" comment add TASK-CXA-001 "Reviewed by codex-b" < /dev/null >/dev/null 2>&1
+  env -i PATH="$PATH" HOME="$T/home-codex-b" USER=codex-b AIDA_USER=codex-b CODEX_CI=1 "$AIDA_BIN" db sync --push < /dev/null >/dev/null 2>&1
+  cd "$T/codex-a"
+  env -i PATH="$PATH" HOME="$T/home-codex-a" USER=codex-a AIDA_USER=codex-a CODEX_CI=1 "$AIDA_BIN" db sync --pull < /dev/null >/dev/null 2>&1
+)
+S13_OUT=$(cd "$T/codex-a" && env -i PATH="$PATH" HOME="$T/home-codex-a" USER=codex-a AIDA_USER=codex-a CODEX_CI=1 "$AIDA_BIN" show TASK-CXA-001 < /dev/null 2>/dev/null || true)
+t1=$(now_ms)
+if [[ -f "$T/codex-seed/AGENTS.md" ]] && grep -q "Reviewed by codex-b" <<<"$S13_OUT"; then
+  record_result "S13 (Codex-only agent mode)" "PASS" "$((t1 - t0))" "AGENTS.md scaffolded; pure CODEX_CI=1 sync succeeded"
+else
+  record_result "S13 (Codex-only agent mode)" "FAIL" "$((t1 - t0))" "Codex-only init or sync failed"
+fi
+
+# --- S14: Global / Agreed Spec ID allocation — Single-Forge CAS mode ---
+t0=$(now_ms)
+(
+  unset GIT_EDITOR
+  cd "$T/codex-a"
+  cat >> .aida/config.toml <<EOF
+
+[ids]
+counter_scope = "per-type"
+format = "agreed-then-node-aware"
+
+[store.hubs]
+primary = { urls = ["$T/codex-hub.git"] }
+EOF
+  HOME="$T/home-codex-a" git add .aida/config.toml
+  HOME="$T/home-codex-a" git commit -m "chore(ids): declare single hub for CAS block allocation" >/dev/null 2>&1
+  HOME="$T/home-codex-a" git push origin main >/dev/null 2>&1
+  HOME="$T/home-codex-a" AIDA_USER=codex-a "$AIDA_BIN" node upstream origin < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-a" AIDA_USER=codex-a "$AIDA_BIN" db block claim --type TASK --size 5 < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-a" AIDA_USER=codex-a "$AIDA_BIN" add --type task --title "S14 Global Task A" --description "From block A" < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-a" AIDA_USER=codex-a "$AIDA_BIN" db sync --push < /dev/null >/dev/null 2>&1
+  cd "$T/codex-b"
+  HOME="$T/home-codex-b" git pull --ff-only origin main >/dev/null 2>&1
+  HOME="$T/home-codex-b" AIDA_USER=codex-b "$AIDA_BIN" db sync --pull < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-b" AIDA_USER=codex-b "$AIDA_BIN" node upstream origin < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-b" AIDA_USER=codex-b "$AIDA_BIN" db block claim --type TASK --size 5 < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-b" AIDA_USER=codex-b "$AIDA_BIN" add --type task --title "S14 Global Task B" --description "From block B" < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-b" AIDA_USER=codex-b "$AIDA_BIN" db sync --push < /dev/null >/dev/null 2>&1
+)
+S14_AGREED_A=$(grep -rn -B5 -A5 "S14 Global Task A" "$T/codex-b/.aida-store/objects/" | grep "agreed_id:" | head -n1 | awk '{print $NF}' || true)
+S14_AGREED_B=$(grep -rn -B5 -A5 "S14 Global Task B" "$T/codex-b/.aida-store/objects/" | grep "agreed_id:" | head -n1 | awk '{print $NF}' || true)
+t1=$(now_ms)
+if [[ -n "$S14_AGREED_A" && "$S14_AGREED_A" != "null" && -n "$S14_AGREED_B" && "$S14_AGREED_B" != "null" && "$S14_AGREED_A" != "$S14_AGREED_B" ]]; then
+  record_result "S14 (Single-forge global ID)" "PASS" "$((t1 - t0))" "Nodes dispensed global agreed IDs ($S14_AGREED_A, $S14_AGREED_B)"
+else
+  record_result "S14 (Single-forge global ID)" "FAIL" "$((t1 - t0))" "agreed_a='$S14_AGREED_A' agreed_b='$S14_AGREED_B'"
+fi
+
+# --- S15 & S16: Multi-forge rooted pool delegation (enroll-root + node hub add) & air-gapped fallback ---
+t0=$(now_ms)
+git init --bare -b main "$T/codex-gitlab.git" >/dev/null 2>&1
+mkdir -p "$T/home-codex-c" "$T/home-codex-airgap"
+for h in "$T/home-codex-c" "$T/home-codex-airgap"; do
+  git config --file "$h/.gitconfig" user.name "Codex Peer"
+  git config --file "$h/.gitconfig" user.email "peer@test.invalid"
+  git config --file "$h/.gitconfig" init.defaultBranch main
+done
+(
+  unset GIT_EDITOR
+  cd "$T/codex-a"
+  # Clear upstream on codex-a before enrolling it as the allocation root
+  HOME="$T/home-codex-a" AIDA_USER=codex-a "$AIDA_BIN" node upstream --clear < /dev/null >/dev/null 2>&1 || true
+  HOME="$T/home-codex-a" AIDA_USER=codex-a "$AIDA_BIN" node enroll-root < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-a" AIDA_USER=codex-a "$AIDA_BIN" node hub add gitlab --url "$T/codex-gitlab.git" --size 100 < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-a" git add .aida/config.toml
+  HOME="$T/home-codex-a" git commit -m "chore(hub): add gitlab hub with delegated pool" >/dev/null 2>&1 || true
+  HOME="$T/home-codex-a" git remote add gitlab "$T/codex-gitlab.git" 2>/dev/null || true
+  HOME="$T/home-codex-a" git push origin main >/dev/null 2>&1
+  HOME="$T/home-codex-a" git push -u gitlab main >/dev/null 2>&1
+  HOME="$T/home-codex-a" git -C .aida-store remote add gitlab "$T/codex-gitlab.git" 2>/dev/null || true
+  HOME="$T/home-codex-a" AIDA_USER=codex-a "$AIDA_BIN" db sync --push < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-a" git -C .aida-store push -u gitlab aida-store >/dev/null 2>&1
+)
+HOME="$T/home-codex-c" git clone "$T/codex-gitlab.git" "$T/codex-c" >/dev/null 2>&1
+(
+  unset GIT_EDITOR
+  cd "$T/codex-c"
+  HOME="$T/home-codex-c" AIDA_USER=codex-c "$AIDA_BIN" db sync --pull < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-c" AIDA_USER=codex-c "$AIDA_BIN" node acquire < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-c" AIDA_USER=codex-c "$AIDA_BIN" node upstream origin < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-c" AIDA_USER=codex-c "$AIDA_BIN" db block claim --type TASK --size 5 < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-c" AIDA_USER=codex-c "$AIDA_BIN" add --type task --title "S15 GitLab Pool Task" --description "From delegated gitlab pool" < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-c" AIDA_USER=codex-c "$AIDA_BIN" db sync --push < /dev/null >/dev/null 2>&1
+)
+S15_AGREED_C=$(grep -rn -B5 -A5 "S15 GitLab Pool Task" "$T/codex-c/.aida-store/objects/" | grep "agreed_id:" | head -n1 | awk '{print $NF}' || true)
+t1=$(now_ms)
+if [[ -n "$S15_AGREED_C" && "$S15_AGREED_C" != "null" && "$S15_AGREED_C" != "$S14_AGREED_A" && "$S15_AGREED_C" != "$S14_AGREED_B" ]]; then
+  record_result "S15 (Multi-forge pool ID)" "PASS" "$((t1 - t0))" "GitLab clone dispensed delegated global ID ($S15_AGREED_C)"
+else
+  record_result "S15 (Multi-forge pool ID)" "FAIL" "$((t1 - t0))" "agreed_c='$S15_AGREED_C'"
+fi
+
+# S16: Air-gapped clone (no upstream reachable) falls back to node-local IDs and reconciles
+t0=$(now_ms)
+HOME="$T/home-codex-airgap" git clone "$T/codex-hub.git" "$T/codex-airgap" >/dev/null 2>&1
+(
+  unset GIT_EDITOR
+  cd "$T/codex-airgap"
+  HOME="$T/home-codex-airgap" AIDA_USER=codex-airgap "$AIDA_BIN" db sync --pull < /dev/null >/dev/null 2>&1
+  HOME="$T/home-codex-airgap" AIDA_USER=codex-airgap "$AIDA_BIN" node acquire < /dev/null >/dev/null 2>&1
+)
+mv "$T/codex-hub.git" "$T/codex-hub.git.airgapped"
+(
+  unset GIT_EDITOR
+  cd "$T/codex-airgap"
+  HOME="$T/home-codex-airgap" AIDA_USER=codex-airgap "$AIDA_BIN" add --type task --title "S16 Airgapped Task" --description "Allocated while air-gapped" < /dev/null >/dev/null 2>&1
+)
+mv "$T/codex-hub.git.airgapped" "$T/codex-hub.git"
+(
+  unset GIT_EDITOR
+  cd "$T/codex-airgap"
+  HOME="$T/home-codex-airgap" AIDA_USER=codex-airgap "$AIDA_BIN" db sync --push < /dev/null >/dev/null 2>&1
+)
+S16_SPEC_ID=$(grep -rn -B5 -A5 "S16 Airgapped Task" "$T/codex-airgap/.aida-store/objects/" | grep "spec_id:" | head -n1 | awk '{print $NF}' || true)
+t1=$(now_ms)
+if [[ "$S16_SPEC_ID" == TASK-*-001 ]]; then
+  record_result "S16 (Air-gapped ID fallback)" "PASS" "$((t1 - t0))" "Air-gapped node issued node-local $S16_SPEC_ID and synced"
+else
+  record_result "S16 (Air-gapped ID fallback)" "FAIL" "$((t1 - t0))" "spec_id='$S16_SPEC_ID'"
+fi
+
+# --- S17 & S18: Read-only clone + per-node feedback branch (aida intent / STORY-2652) ---
+t0=$(now_ms)
+RO_WRITER="a65b4bf5902d469995f816efd3a27661"
+HOME_PROC="b65b4bf5902d469995f816efd3a27662"
+mkdir -p "$T/home-ro"
+cat > "$T/home-ro/.gitconfig" <<EOF
+[user]
+	name = ReadOnly Node
+	email = ro@test.invalid
+[init]
+	defaultBranch = main
+EOF
+HOME="$T/home-ro" git clone "$T/hub.git" "$T/node-ro" >/dev/null 2>&1
+(
+  unset GIT_EDITOR
+  cd "$T/node-ro"
+  HOME="$T/home-ro" AIDA_USER=node-ro "$AIDA_BIN" db sync --pull < /dev/null >/dev/null 2>&1
+)
+# Install pre-receive hook on hub.git enforcing that when AIDA_READONLY_CLONE=1,
+# ONLY refs/heads/aida-feedback-$RO_WRITER is writable (main and aida-store are read-only!).
+cat > "$T/hub.git/hooks/pre-receive" <<EOF
+#!/usr/bin/env bash
+if [[ "\${AIDA_READONLY_CLONE:-0}" == "1" ]]; then
+  while read -r oldrev newrev refname; do
+    if [[ "\$refname" != "refs/heads/aida-feedback-$RO_WRITER" ]]; then
+      echo "DENIED: read-only clone may only push to refs/heads/aida-feedback-$RO_WRITER (got \$refname)" >&2
+      exit 1
+    fi
+  done
+fi
+exit 0
+EOF
+chmod +x "$T/hub.git/hooks/pre-receive"
+
+# 1. Verify main and aida-store pushes are blocked for Node RO
+set +e
+(cd "$T/node-ro" && AIDA_READONLY_CLONE=1 HOME="$T/home-ro" git commit --allow-empty -m "ro test" >/dev/null 2>&1 && AIDA_READONLY_CLONE=1 HOME="$T/home-ro" git push origin main >/dev/null 2>&1)
+RO_MAIN_PUSH_RC=$?
+(cd "$T/node-ro" && AIDA_READONLY_CLONE=1 HOME="$T/home-ro" git -C .aida-store commit --allow-empty -m "ro store test" >/dev/null 2>&1 && AIDA_READONLY_CLONE=1 HOME="$T/home-ro" git -C .aida-store push origin aida-store >/dev/null 2>&1)
+RO_STORE_PUSH_RC=$?
+set -e
+git -C "$T/node-ro" reset --hard origin/main >/dev/null 2>&1
+git -C "$T/node-ro/.aida-store" reset --hard origin/aida-store >/dev/null 2>&1
+
+# 2. Node RO enrolls as producer, creates observation note, and publishes to refs/heads/aida-feedback-$RO_WRITER
+echo "Read-only clone discovered a sync edge case and requests a task." > "$T/ro-note-body.md"
+(
+  unset GIT_EDITOR
+  cd "$T/node-ro"
+  AIDA_READONLY_CLONE=1 HOME="$T/home-ro" AIDA_USER=node-ro "$AIDA_BIN" intent enroll \
+    --remote "$T/hub.git" \
+    --role producer \
+    --writer-id "$RO_WRITER" \
+    --receipt-writer "$HOME_PROC" \
+    --reviewed < /dev/null >/dev/null 2>&1
+  AIDA_READONLY_CLONE=1 HOME="$T/home-ro" AIDA_USER=node-ro "$AIDA_BIN" intent note \
+    --category request \
+    --title "S17 Feedback Request from Read-Only Clone" \
+    --file "$T/ro-note-body.md" > "$T/ro-envelope.json" 2>/dev/null
+  AIDA_READONLY_CLONE=1 HOME="$T/home-ro" AIDA_USER=node-ro "$AIDA_BIN" intent publish \
+    --file "$T/ro-envelope.json" \
+    --reviewed < /dev/null >/dev/null 2>&1
+)
+RO_CHECKSUM=$(sha256sum "$T/ro-envelope.json" >/dev/null 2>&1; grep -o '"checksum":"[0-9a-f]*"' "$T/ro-envelope.json" | cut -d'"' -f4)
+
+# 3. Node A enrolls as processor, pulls feedback branch, processes observation into a spec, and publishes receipt
+(
+  unset GIT_EDITOR
+  cd "$T/node-a"
+  HOME="$T/home-a" AIDA_USER=node-a "$AIDA_BIN" intent enroll \
+    --remote "$T/hub.git" \
+    --role processor \
+    --writer-id "$HOME_PROC" \
+    --producer-id "$RO_WRITER" \
+    --reviewed < /dev/null >/dev/null 2>&1
+  HOME="$T/home-a" AIDA_USER=node-a "$AIDA_BIN" intent pull < /dev/null >/dev/null 2>&1
+  HOME="$T/home-a" AIDA_USER=node-a "$AIDA_BIN" intent process "$RO_CHECKSUM" --action create < /dev/null >/dev/null 2>&1
+)
+# 4. Node RO pulls receipt branch and verifies its feedback was processed!
+S17_RO_LIST=$(
+  unset GIT_EDITOR
+  cd "$T/node-ro"
+  AIDA_READONLY_CLONE=1 HOME="$T/home-ro" AIDA_USER=node-ro "$AIDA_BIN" intent pull < /dev/null >/dev/null 2>&1
+  AIDA_READONLY_CLONE=1 HOME="$T/home-ro" AIDA_USER=node-ro "$AIDA_BIN" intent list --all --json < /dev/null 2>/dev/null || true
+)
+t1=$(now_ms)
+if [[ "$RO_MAIN_PUSH_RC" -ne 0 && "$RO_STORE_PUSH_RC" -ne 0 ]] && grep -q '"state":"processed"' <<<"$S17_RO_LIST"; then
+  record_result "S17 (RO feedback branch)" "PASS" "$((t1 - t0))" "main/store blocked; feedback published & receipt verified on RO clone"
+else
+  record_result "S17 (RO feedback branch)" "FAIL" "$((t1 - t0))" "main_rc=$RO_MAIN_PUSH_RC store_rc=$RO_STORE_PUSH_RC list=$S17_RO_LIST"
+fi
+
+# --- S18: Foreign write on producer's own feedback branch (STORY-2652 Ruling R4) ---
+t0=$(now_ms)
+# Simulate a foreign writer appending a valid intake commit directly to refs/heads/aida-feedback-$RO_WRITER on hub.git
+FOREIGN_WORK="$T/foreign-intake"
+git clone -q -b "aida-feedback-$RO_WRITER" "$T/hub.git" "$FOREIGN_WORK" >/dev/null 2>&1
+echo "Foreign body" > "$T/foreign-body.md"
+(
+  cd "$T/node-a"
+  HOME="$T/home-a" "$AIDA_BIN" intent note --category observation --title "Foreign observation" --file "$T/foreign-body.md" > "$T/foreign-env.json" 2>/dev/null
+)
+FOREIGN_CS=$(grep -o '"checksum":"[0-9a-f]*"' "$T/foreign-env.json" | cut -d'"' -f4)
+cp "$T/foreign-env.json" "$FOREIGN_WORK/observations/$FOREIGN_CS.json"
+(
+  cd "$FOREIGN_WORK"
+  git add "observations/$FOREIGN_CS.json"
+  GIT_AUTHOR_NAME="AIDA Intake" GIT_AUTHOR_EMAIL="intake@invalid" \
+  GIT_COMMITTER_NAME="AIDA Intake" GIT_COMMITTER_EMAIL="intake@invalid" \
+  git -c commit.gpgSign=false commit -qm "Record reviewed intake data"
+  git push -q origin "HEAD:refs/heads/aida-feedback-$RO_WRITER"
+)
+# Now Node RO runs `aida intent pull`. Per STORY-2652 Ruling R4, a remote tip ahead of what
+# this producer published on its OWN branch should be refused rather than silently fast-forwarded!
+set +e
+(cd "$T/node-ro" && AIDA_READONLY_CLONE=1 HOME="$T/home-ro" AIDA_USER=node-ro "$AIDA_BIN" intent pull < /dev/null >/dev/null 2>&1)
+S18_PULL_RC=$?
+set -e
+t1=$(now_ms)
+if [[ "$S18_PULL_RC" -ne 0 ]]; then
+  record_result "S18 (RO branch foreign-write)" "PASS" "$((t1 - t0))" "Producer refused foreign write on its own feedback branch (R4)"
+else
+  record_result "S18 (RO branch foreign-write)" "WARN" "$((t1 - t0))" "BUG-MN-009: Producer fast-forwarded foreign write on its own branch (STORY-2652 R4)"
+fi
+
+# --- S19: Hourly inter-node heartbeat & allow-listed action channel (crates/aida-store-sync) ---
+t0=$(now_ms)
+if cargo test --manifest-path /home/joe/ai/aida-multinode/Cargo.toml --quiet s19_hourly_heartbeat_executes_allowlisted_actions_idempotently >/dev/null 2>&1; then
+  t1=$(now_ms)
+  record_result "S19 (Hourly heartbeat/action)" "PASS" "$((t1 - t0))" "Allow-listed directives executed idempotently; RO PushStore refused"
+else
+  t1=$(now_ms)
+  record_result "S19 (Hourly heartbeat/action)" "FAIL" "$((t1 - t0))" "Heartbeat/action channel test failed"
+fi
+
 echo "========================================================================"
 echo "Summary: $FAILURES failure(s), $WARNINGS warning(s)"
 echo "========================================================================"

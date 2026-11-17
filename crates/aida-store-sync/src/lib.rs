@@ -870,7 +870,321 @@ pub fn reconcile_diverged_hubs(repo: &Path, hubs: &[&str], branch: &str) -> Resu
 }
 
 // ============================================================================
-// 6. Unit & Multi-Clone Integration Tests (BUG-MN-001 through BUG-MN-008, STORY-MN-003)
+// 6. Global / Agreed Spec ID Block Allocation & Multi-Forge Pool Delegation (S14-S16)
+// ============================================================================
+
+/// A delegated hub pool (`aida node hub add <hub> --size <N>`) carved by the
+/// enrolled allocation root (`registry/root.yaml`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HubIdPool {
+    pub hub_name: String,
+    pub type_prefix: String,
+    pub pool_start: u32,
+    pub pool_end: u32,
+}
+
+/// An agreed-ID block claimed by a node (`registry/blocks.yaml`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgreedBlock {
+    pub node_id: String,
+    pub hub_name: String,
+    pub type_prefix: String,
+    pub range_start: u32,
+    pub range_end: u32,
+    pub next: u32,
+}
+
+impl AgreedBlock {
+    pub fn remaining(&self) -> u32 {
+        if self.next > self.range_end {
+            0
+        } else {
+            self.range_end - self.next + 1
+        }
+    }
+
+    pub fn dispense(&mut self) -> Option<String> {
+        if self.next > self.range_end {
+            None
+        } else {
+            let id = format!("{}-{:03}", self.type_prefix, self.next);
+            self.next += 1;
+            Some(id)
+        }
+    }
+}
+
+/// Result of allocating a spec ID on a node (`S14`–`S16`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DispensedSpecId {
+    /// Canonical node-local spec ID (`TASK-<node>-001`).
+    pub spec_id: String,
+    /// Global agreed ID (`TASK-001` or `TASK-1001`) if dispensed from an active
+    /// `AgreedBlock`; `None` when air-gapped or when no block is available.
+    pub agreed_id: Option<String>,
+}
+
+/// Claims a new non-overlapping `AgreedBlock` of `size` IDs inside `pool` (or
+/// from `1..=u32::MAX` in single-hub mode when `pool` is `None`).
+// trace:STORY-MN-003 | ai:antigravity
+pub fn claim_block_in_pool(
+    existing_blocks: &[AgreedBlock],
+    pool: Option<&HubIdPool>,
+    node_id: &str,
+    hub_name: &str,
+    type_prefix: &str,
+    size: u32,
+) -> Result<AgreedBlock, String> {
+    if size == 0 {
+        return Err("block size must be > 0".to_string());
+    }
+    let prefix = type_prefix.to_ascii_uppercase();
+    let (floor, ceiling) = match pool {
+        Some(p) => {
+            if p.hub_name != hub_name || p.type_prefix.to_ascii_uppercase() != prefix {
+                return Err(format!(
+                    "pool mismatch: expected ({hub_name}, {prefix}), got ({}, {})",
+                    p.hub_name, p.type_prefix
+                ));
+            }
+            (p.pool_start, p.pool_end)
+        }
+        None => (1, u32::MAX - size),
+    };
+
+    let mut next_start = floor;
+    for b in existing_blocks
+        .iter()
+        .filter(|b| b.type_prefix.eq_ignore_ascii_case(&prefix))
+    {
+        if b.range_end >= floor && b.range_start <= ceiling && b.range_end >= next_start {
+            next_start = b.range_end.saturating_add(1);
+        }
+    }
+    let range_end = next_start.saturating_add(size - 1);
+    if range_end > ceiling {
+        return Err(format!(
+            "hub pool `{hub_name}` for `{prefix}` exhausted ({next_start}..={range_end} exceeds pool ceiling {ceiling})"
+        ));
+    }
+
+    Ok(AgreedBlock {
+        node_id: node_id.to_string(),
+        hub_name: hub_name.to_string(),
+        type_prefix: prefix,
+        range_start: next_start,
+        range_end,
+        next: next_start,
+    })
+}
+
+/// Dispenses a spec ID for `(node_id, type_prefix)`: draws a global `agreed_id`
+/// from the first non-exhausted block owned by `node_id` when online/allocated,
+/// or falls back to a node-local ID (`agreed_id: None`) when air-gapped.
+// trace:STORY-MN-003 | ai:antigravity
+pub fn dispense_spec_id(
+    blocks: &mut [AgreedBlock],
+    node_id: &str,
+    type_prefix: &str,
+    local_seq: u32,
+) -> DispensedSpecId {
+    let prefix = type_prefix.to_ascii_uppercase();
+    let spec_id = format!("{prefix}-{node_id}-{local_seq:03}");
+    let agreed_id = blocks
+        .iter_mut()
+        .find(|b| {
+            b.node_id == node_id && b.type_prefix.eq_ignore_ascii_case(&prefix) && b.remaining() > 0
+        })
+        .and_then(AgreedBlock::dispense);
+    DispensedSpecId { spec_id, agreed_id }
+}
+
+// ============================================================================
+// 7. Read-Only Clone Per-Node Feedback Branch & Foreign-Write Guard (S17-S18)
+// ============================================================================
+
+/// Checksummed observation envelope published by a read-only clone onto its
+/// exclusive `refs/heads/aida-feedback-<node-id>` orphan branch (`STORY-2652`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeedbackEnvelope {
+    pub producer_node_id: String,
+    pub category: String,
+    pub title: String,
+    pub body: String,
+    pub checksum: String,
+}
+
+/// Processing receipt published by an authorized home processor onto
+/// `refs/heads/aida-feedback-receipts-<processor-node-id>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeedbackReceipt {
+    pub processor_node_id: String,
+    pub checksum: String,
+    pub action: String,
+    pub destination_spec: Option<String>,
+}
+
+/// Enforces `STORY-2652` Advisor Ruling `R4` (own-branch foreign-write rule)
+/// and read-only clone branch restrictions:
+/// - A read-only producer clone may ONLY push to `refs/heads/aida-feedback-<producer_node_id>`.
+/// - Pushes to `refs/heads/main` or `refs/heads/aida-store` from the read-only
+///   producer are refused.
+/// - On the producer's own branch, if `remote_tip` is not equal to `last_published_tip`
+///   (e.g., a foreign writer advanced the producer's branch), sync refuses instead
+///   of fast-forwarding (`BUG-MN-009` / `STORY-2652` R4).
+// trace:STORY-MN-003 | ai:antigravity
+pub fn validate_readonly_feedback_push_and_sync(
+    producer_node_id: &str,
+    target_ref: &str,
+    last_published_tip: Option<&str>,
+    remote_tip: Option<&str>,
+) -> Result<(), String> {
+    let expected_ref = format!("refs/heads/aida-feedback-{producer_node_id}");
+    if target_ref != expected_ref {
+        return Err(format!(
+            "read-only clone `{producer_node_id}` is forbidden from pushing to `{target_ref}`; only `{expected_ref}` is writable"
+        ));
+    }
+    if let Some(remote) = remote_tip {
+        if last_published_tip != Some(remote) {
+            return Err(format!(
+                "foreign write detected on producer branch `{expected_ref}`: remote tip `{remote}` != last published tip `{:?}` (STORY-2652 R4 refusal)",
+                last_published_tip
+            ));
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// 8. Inter-Node Hourly Heartbeat & Allow-Listed Action Channel (S19)
+// ============================================================================
+
+/// Closed allow-list of remote actions a node may execute during an hourly
+/// heartbeat tick (`STORY-MN-004`). Arbitrary shell strings are never admitted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeAction {
+    /// `aida pull --code-only`
+    PullCode,
+    /// `aida db sync --pull`
+    PullStore,
+    /// `aida db sync --push`
+    PushStore,
+    /// `aida intent pull`
+    PullFeedback,
+    /// `aida intent publish`
+    PublishFeedback,
+    /// `aida remote status`
+    ReportStatus,
+}
+
+impl NodeAction {
+    /// Returns the exact allow-listed `aida` CLI arguments for this action.
+    pub fn cli_args(self) -> &'static [&'static str] {
+        match self {
+            Self::PullCode => &["pull", "--code-only"],
+            Self::PullStore => &["db", "sync", "--pull"],
+            Self::PushStore => &["db", "sync", "--push"],
+            Self::PullFeedback => &["intent", "pull"],
+            Self::PublishFeedback => &["intent", "publish"],
+            Self::ReportStatus => &["remote", "status"],
+        }
+    }
+}
+
+/// A directed action message queued for `target_node_id`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeDirective {
+    pub directive_id: String,
+    pub target_node_id: String,
+    pub issued_by: String,
+    pub action: NodeAction,
+    pub issued_at_epoch_s: u64,
+}
+
+/// Durable receipt proving `directive_id` was already executed by `node_id`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirectiveReceipt {
+    pub directive_id: String,
+    pub node_id: String,
+    pub executed_at_epoch_s: u64,
+    pub status: String,
+}
+
+/// Periodic liveness & state beacon emitted by a node on its hourly tick.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeHeartbeat {
+    pub node_id: String,
+    pub timestamp_epoch_s: u64,
+    pub code_head_sha: String,
+    pub store_head_sha: String,
+    pub executed_directives: Vec<DirectiveReceipt>,
+}
+
+/// Evaluates an hourly heartbeat tick for `node_id`:
+/// - Filters `inbox` for directives targeting `node_id` (or `"*"` broadcast)
+///   that have not yet been recorded in `prior_receipts`.
+/// - For read-only clones (`is_readonly_clone == true`), refuses store-mutating
+///   actions (`PushStore`) while allowing `PullCode`, `PullStore`, `PullFeedback`,
+///   `PublishFeedback`, and `ReportStatus`.
+/// - Returns the ordered list of `(NodeDirective, &'static [&'static str])` CLI
+///   invocations to run and the updated `NodeHeartbeat` with idempotent receipts.
+// trace:STORY-MN-003 | ai:antigravity
+pub fn evaluate_hourly_node_tick(
+    node_id: &str,
+    is_readonly_clone: bool,
+    now_epoch_s: u64,
+    code_head_sha: &str,
+    store_head_sha: &str,
+    inbox: &[NodeDirective],
+    prior_receipts: &[DirectiveReceipt],
+) -> (Vec<(NodeDirective, &'static [&'static str])>, NodeHeartbeat) {
+    let done_ids: BTreeSet<&str> = prior_receipts
+        .iter()
+        .filter(|r| r.node_id == node_id)
+        .map(|r| r.directive_id.as_str())
+        .collect();
+
+    let mut planned = Vec::new();
+    let mut receipts = prior_receipts.to_vec();
+
+    for d in inbox {
+        if d.target_node_id != node_id && d.target_node_id != "*" {
+            continue;
+        }
+        if done_ids.contains(d.directive_id.as_str()) {
+            continue;
+        }
+        if is_readonly_clone && d.action == NodeAction::PushStore {
+            receipts.push(DirectiveReceipt {
+                directive_id: d.directive_id.clone(),
+                node_id: node_id.to_string(),
+                executed_at_epoch_s: now_epoch_s,
+                status: "refused:read-only-clone".to_string(),
+            });
+            continue;
+        }
+        planned.push((d.clone(), d.action.cli_args()));
+        receipts.push(DirectiveReceipt {
+            directive_id: d.directive_id.clone(),
+            node_id: node_id.to_string(),
+            executed_at_epoch_s: now_epoch_s,
+            status: "executed".to_string(),
+        });
+    }
+
+    let heartbeat = NodeHeartbeat {
+        node_id: node_id.to_string(),
+        timestamp_epoch_s: now_epoch_s,
+        code_head_sha: code_head_sha.to_string(),
+        store_head_sha: store_head_sha.to_string(),
+        executed_directives: receipts,
+    };
+    (planned, heartbeat)
+}
+
+// ============================================================================
+// 9. Unit & Multi-Clone Integration Tests (BUG-MN-001 through BUG-MN-008, STORY-MN-003)
 // ============================================================================
 
 #[cfg(test)]
@@ -1384,5 +1698,134 @@ mod tests {
         assert!(bridge_clone.join("objects/TASK-GL-001.yaml").exists());
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn s14_s16_global_id_block_allocation_single_forge_multiforge_and_airgapped() {
+        let mut blocks = Vec::new();
+        // 1. Single-forge: Node A and Node B claim contiguous TASK blocks on origin
+        let b_a = claim_block_in_pool(&blocks, None, "node-a", "origin", "TASK", 5).unwrap();
+        assert_eq!((b_a.range_start, b_a.range_end), (1, 5));
+        blocks.push(b_a);
+
+        let b_b = claim_block_in_pool(&blocks, None, "node-b", "origin", "TASK", 5).unwrap();
+        assert_eq!((b_b.range_start, b_b.range_end), (6, 10));
+        blocks.push(b_b);
+
+        // 2. Multi-forge delegated pool: gitlab granted 1001..=2000 for TASK
+        let gitlab_pool = HubIdPool {
+            hub_name: "gitlab".to_string(),
+            type_prefix: "TASK".to_string(),
+            pool_start: 1001,
+            pool_end: 2000,
+        };
+        let b_c = claim_block_in_pool(&blocks, Some(&gitlab_pool), "node-c", "gitlab", "TASK", 10)
+            .unwrap();
+        assert_eq!((b_c.range_start, b_c.range_end), (1001, 1010));
+        blocks.push(b_c);
+
+        // Dispense on Node A -> TASK-001, Node B -> TASK-006, Node C -> TASK-1001
+        let id_a = dispense_spec_id(&mut blocks, "node-a", "TASK", 1);
+        let id_b = dispense_spec_id(&mut blocks, "node-b", "TASK", 1);
+        let id_c = dispense_spec_id(&mut blocks, "node-c", "TASK", 1);
+        assert_eq!(id_a.agreed_id.as_deref(), Some("TASK-001"));
+        assert_eq!(id_b.agreed_id.as_deref(), Some("TASK-006"));
+        assert_eq!(id_c.agreed_id.as_deref(), Some("TASK-1001"));
+
+        // 3. Air-gapped Node D (no block) -> falls back to node-local with agreed_id = None
+        let id_d = dispense_spec_id(&mut blocks, "node-d", "TASK", 1);
+        assert_eq!(id_d.spec_id, "TASK-node-d-001");
+        assert!(id_d.agreed_id.is_none());
+    }
+
+    #[test]
+    fn s17_s18_readonly_clone_feedback_branch_and_foreign_write_guard() {
+        let node_ro = "a65b4bf5902d469995f816efd3a27661";
+        // Pushing to main or aida-store from read-only clone is refused
+        assert!(
+            validate_readonly_feedback_push_and_sync(node_ro, "refs/heads/main", None, None)
+                .is_err()
+        );
+        assert!(validate_readonly_feedback_push_and_sync(
+            node_ro,
+            "refs/heads/aida-store",
+            None,
+            None
+        )
+        .is_err());
+
+        // Pushing to own feedback branch succeeds when remote matches last published tip
+        let own_ref = format!("refs/heads/aida-feedback-{node_ro}");
+        assert!(validate_readonly_feedback_push_and_sync(
+            node_ro,
+            &own_ref,
+            Some("abc111"),
+            Some("abc111")
+        )
+        .is_ok());
+
+        // Foreign write advancing remote tip on producer's own branch is refused (STORY-2652 R4)
+        let err = validate_readonly_feedback_push_and_sync(
+            node_ro,
+            &own_ref,
+            Some("abc111"),
+            Some("def222"),
+        )
+        .unwrap_err();
+        assert!(err.contains("foreign write detected"));
+    }
+
+    #[test]
+    fn s19_hourly_heartbeat_executes_allowlisted_actions_idempotently() {
+        let inbox = vec![
+            NodeDirective {
+                directive_id: "dir-1".to_string(),
+                target_node_id: "node-ro".to_string(),
+                issued_by: "node-home".to_string(),
+                action: NodeAction::PullCode,
+                issued_at_epoch_s: 1000,
+            },
+            NodeDirective {
+                directive_id: "dir-2".to_string(),
+                target_node_id: "node-ro".to_string(),
+                issued_by: "node-home".to_string(),
+                action: NodeAction::PushStore, // Forbidden on read-only clone!
+                issued_at_epoch_s: 1001,
+            },
+            NodeDirective {
+                directive_id: "dir-3".to_string(),
+                target_node_id: "*".to_string(),
+                issued_by: "node-home".to_string(),
+                action: NodeAction::PullFeedback,
+                issued_at_epoch_s: 1002,
+            },
+        ];
+
+        let (planned, hb1) = evaluate_hourly_node_tick(
+            "node-ro",
+            true,
+            3600,
+            "code-sha-1",
+            "store-sha-1",
+            &inbox,
+            &[],
+        );
+        assert_eq!(planned.len(), 2);
+        assert_eq!(planned[0].1, &["pull", "--code-only"]);
+        assert_eq!(planned[1].1, &["intent", "pull"]);
+        assert_eq!(hb1.executed_directives.len(), 3);
+        assert_eq!(hb1.executed_directives[1].status, "refused:read-only-clone");
+
+        // Second hourly tick with same inbox executes nothing (idempotent receipts)
+        let (planned_again, _hb2) = evaluate_hourly_node_tick(
+            "node-ro",
+            true,
+            7200,
+            "code-sha-1",
+            "store-sha-1",
+            &inbox,
+            &hb1.executed_directives,
+        );
+        assert!(planned_again.is_empty());
     }
 }
