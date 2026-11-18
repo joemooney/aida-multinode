@@ -1,0 +1,32 @@
+id: 01a1ed1a-9a46-7b62-86eb-fcf67350824b
+spec_id: BUG-d530fb089bc1489a800b2058e5cccc62-010
+title: 'S4a false FAIL: pass regex ''conflict|overrid'' misses aida''s ''upstream overrode local fields'' message'
+description: |
+  S4a (harness/run_multinode_suite.sh:226-241) reports a false FAIL. Its pass check is `grep -qiE "conflict|overrid"` on node B's `db sync --push` output, but aida (since BUG-2613 / aida #4178, sha 7dedc00) reports the collision as:
+    "auto-merged FR-...: unioned 3 history entries, status upstream=Draft; upstream overrode local fields: title, priority"
+  "overrode" does not contain "overrid", so a correctly surfaced same-field override is recorded as "BUG-MN-002: Node B scalar edits silently overwritten". The aida advisor ruled on 2026-11-17 that the surfaced override satisfies S4a (see aida BUG-2613).
+
+  ## Acceptance
+  1. The S4a match accepts "overrode" (for example `conflict|overrid|overrode`, or better, a stable phrase such as "upstream overrode local fields").
+  2. Re-run `--strict` against an aida binary that contains aida #4178: S4a reports PASS.
+  3. A binary WITHOUT the fix (silent override) still makes S4a FAIL.
+status: Draft
+priority: Medium
+owner: ''
+feature: Uncategorized
+created_at: 2026-11-18T05:21:46.054716457Z
+modified_at: 2026-11-18T05:21:46.054716457Z
+req_type: Bug
+tags:
+- BUG-MN-002
+- S4a
+- harness
+filed_at:
+  code_sha: 717886eccd81839e4a794b16606a4a5d9a9790c7
+  branch: main
+  dirty: false
+  aida_version: 0.16.0
+  aida_build_sha: '44486781590'
+  vendor: claude
+  session: 01a1ebd2-751f-78d1-a49d-ace9c085cdb9
+  harness_version: 2.1.326 (Claude Code)
